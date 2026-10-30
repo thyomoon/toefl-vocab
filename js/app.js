@@ -836,6 +836,9 @@ function weakPanel(){
 
 const TST={active:false,type:"mix",qs:[],i:0,score:0,wrong:[],answered:null,lock:false};
 const TTYPES=[["syn","유의어 고르기","단어의 유의어를 모두 고르기"],["en2ko","뜻 고르기","영어 단어 → 한국어 뜻"],["ko2en","영어 고르기","한국어 뜻 → 영어 단어"],["spell","철자 쓰기","뜻을 보고 영어 단어 전체를 입력"],["blank","빈칸 채우기","문장 속 빈칸에 단어 쓰기 (철자·형태 연습)"]];
+/* a Korean meaning as comparable stems: "거대한, 엄청난" → ["거대","엄청난"→"엄청나"…] (endings like 한/하다/적인/스러운 dropped) */
+function koKeys(ko){return String(ko||"").replace(/\([^)]*\)|\[[^\]]*\]/g,"").split(/[;,·\/~]|\d+\./).map(x=>x.replace(/[^가-힣]/g,"").replace(/(스러운|스럽게|하다|하게|하는|적인|되다|되는|이다|한|히|적|의|함|된|다)$/,"")).filter(Boolean)}
+function koClose(a,b){return a.some(x=>b.some(y=>x===y||Math.min(x.length,y.length)>=2&&(x.includes(y)||y.includes(x))))}
 function synList(w){return String(w.syn||"").split(/[,;]/).map(x=>x.trim().toLowerCase()).filter(x=>x&&x.length<=25&&/^[a-z][a-z \-']*$/.test(x)&&x!==w.w.toLowerCase())}
 function canSyn(w){return synList(w).length>=2}
 function testPool(){const P=S.prog.w;const t=ymd();let pool=allWords().filter(w=>{const r=P[w.id];return r&&r.s>0&&(r.i!=="skip"||r.d<=t)});return pool.length>=4?pool:null}
@@ -851,7 +854,11 @@ function makeQ(w,type){
   if(type==="en2ko"||type==="ko2en"){
     const others=shuffle(allWords().filter(x=>x.id!==w.id&&x.ko!==w.ko&&x.w!==w.w));
     const same=others.filter(x=>x.pos===w.pos);const pool=[...same,...others.filter(x=>x.pos!==w.pos)];
-    const ds=[];for(const x of pool){if(ds.length>=3)break;if(!ds.some(d=>d.ko===x.ko))ds.push(x)}
+    // skip wrong answers whose meaning overlaps the answer or another option (거대한 / 거대한, 엄청난), or that are listed synonyms
+    const wSyn=new Set(synList(w)),lw=w.w.toLowerCase(),taken=[koKeys(w.ko)];
+    const close=x=>wSyn.has(x.w.toLowerCase())||synList(x).includes(lw)||taken.some(k=>koClose(k,koKeys(x.ko)));
+    const ds=[];for(const x of pool){if(ds.length>=3)break;if(!close(x)){ds.push(x);taken.push(koKeys(x.ko))}}
+    for(const x of pool){if(ds.length>=3)break;if(!ds.includes(x)&&!ds.some(d=>d.ko===x.ko))ds.push(x)} // small word lists: fall back to "not the same text"
     q.opts=shuffle([w,...ds]).map(x=>({id:x.id,label:type==="en2ko"?x.ko:x.w}));
   }
   if(type==="blank"){const t=exTarget(w.ex);q.shown="";q.answer=t.toLowerCase()}
