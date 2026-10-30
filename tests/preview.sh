@@ -7,8 +7,8 @@
 #   tests/preview.sh check        → 미리보기 · 로그인 화면을 열어 자바스크립트 오류만 출력(없으면 ok)
 HERE="${0:A:h}"; ROOT="${HERE:h}"
 TMP="${TMPDIR:-/tmp}/tv-preview"; rm -rf "$TMP"; mkdir -p "$TMP"
-cp -R "$ROOT/css" "$ROOT/js" "$ROOT/index.html" "$ROOT/icon-32.png" "$ROOT/icon-180.png" "$TMP/"
-sed -i '' 's|<link rel="manifest" href="manifest.webmanifest">||' "$TMP/index.html"
+cp -R "$ROOT/css" "$ROOT/js" "$ROOT/index.html" "$ROOT"/icon-*.png "$TMP/"
+sed -i '' 's|<link rel="manifest" href="manifest.webmanifest[^"]*">||' "$TMP/index.html"
 # gate.html: same page with a dummy Firebase config, so runtime.js runs and shows the sign-in screen
 sed 's|src="js/config.js[^"]*"|src="js/config.gate.js"|' "$TMP/index.html" > "$TMP/gate.html"
 sed 's|apiKey: ""|apiKey: "demo"|; s|projectId: ""|projectId: "demo-preview"|; s|authDomain: ""|authDomain: "demo-preview.firebaseapp.com"|; s|appId: ""|appId: "1:1:web:1"|' "$ROOT/js/config.js" > "$TMP/js/config.gate.js"
