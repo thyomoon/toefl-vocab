@@ -7,6 +7,12 @@ let jwks=null,jwksAt=0;
 
 export default {
   async fetch(req,env){
+    // anything that throws still answers with CORS headers, so the app sees the reason instead of a dropped connection
+    try{return await handle(req,env)}
+    catch(e){return new Response(JSON.stringify({error:{code:"upstream_error",text:"worker: "+String(e&&e.message||e).slice(0,300)}}),{status:500,headers:{"access-control-allow-origin":"*","content-type":"application/json"}})}
+  }
+};
+async function handle(req,env){
     const origin=req.headers.get("origin")||"";
     const allowed=String(env.ALLOWED_ORIGIN||"").split(",").map(s=>s.trim()).filter(Boolean);
     const cors={"access-control-allow-origin":allowed.includes(origin)?origin:(allowed[0]||"*"),"access-control-allow-headers":"content-type, authorization","access-control-allow-methods":"POST, OPTIONS","vary":"origin"};
@@ -26,7 +32,8 @@ export default {
       headers:{"content-type":"application/json","x-goog-api-key":env.GEMINI_API_KEY},
       body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{responseMimeType:"application/json",temperature:0.2,maxOutputTokens:32768}})});
     if(r.status===429)return fail("rate_limited",429);
-    if(!r.ok){const t=await r.text();return fail(r.status===400&&/image/i.test(t)?"image_rejected":"upstream_error",502,t.slice(0,500))}
+    if(!r.ok){const t=await r.text();let m=t;try{m=JSON.parse(t).error.message||t}catch{}
+      return fail(r.status===400&&/image/i.test(t)?"image_rejected":"upstream_error",502,"Gemini "+r.status+": "+String(m).slice(0,300))}
     const d=await r.json();
     const c=d.candidates&&d.candidates[0];
     if(!c)return fail(d.promptFeedback&&d.promptFeedback.blockReason?"refused":"empty_completion",502);
@@ -34,8 +41,7 @@ export default {
     if(!text.trim())return fail(c.finishReason==="SAFETY"?"refused":"empty_completion",502);
     // a reply cut off by the length limit comes back as invalid_json with the text, and the app keeps the finished entries
     try{return reply({json:JSON.parse(text)})}catch{return fail("invalid_json",502,text)}
-  }
-};
+}
 
 /* Firebase ID token: RS256, signed by Google's securetoken keys, issued for this project and not expired */
 async function verify(tok,project){

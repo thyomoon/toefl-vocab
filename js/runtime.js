@@ -173,9 +173,9 @@ const sample=C.workerUrl?{
     const tok=await auth.currentUser.getIdToken();
     let r;
     try{r=await fetch(C.workerUrl,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+tok},body:JSON.stringify(body),signal:opts.signal})}
-    catch(e){throw codeErr(e&&e.name==="AbortError"?"cancelled":"upstream_error")}
+    catch(e){throw codeErr(e&&e.name==="AbortError"?"cancelled":"upstream_error","서버에 닿지 못함")}
     const d=await r.json().catch(()=>({}));
-    if(!r.ok||d.error)throw codeErr(d.error&&d.error.code||"upstream_error",d.error&&d.error.text);
+    if(!r.ok||d.error)throw codeErr(d.error&&d.error.code||"upstream_error",d.error&&d.error.text||"HTTP "+r.status);
     return d.json;
   }
 }:null;
