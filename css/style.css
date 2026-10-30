@@ -33,6 +33,12 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15p
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.tap:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 input,select,textarea{font:inherit;color:var(--ink)}
+/* phones: 16px keeps iOS from zooming in on focus (the zoom is what left the page sliding sideways) */
+input,select,textarea{font-size:16px;max-width:100%}
+input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-width:0;min-height:46px;text-align:left}
+input[type=date]::-webkit-date-and-time-value{text-align:left}
+html,body{overflow-x:clip}
+.wrap>*,.sheet>*{min-width:0}
 .wrap{max-width:480px;margin:0 auto;padding-inline:16px;padding-block:14px 110px;display:flex;flex-direction:column;gap:18px}
 .num{font-variant-numeric:tabular-nums}
 .muted{color:var(--muted)}
@@ -351,7 +357,7 @@ i.lgdark{background:linear-gradient(90deg,var(--ink) 50%,color-mix(in srgb,var(-
 
 /* sheet, toast, misc */
 .scrim{position:fixed;inset:0;background:rgba(10,12,24,.45);z-index:30;display:flex;align-items:flex-end;justify-content:center}
-.sheet{background:var(--surface);width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:18px 16px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px;max-height:88%;overflow:auto}
+.sheet{background:var(--surface);width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:18px 16px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px;max-height:88%;overflow-x:hidden;overflow-y:auto}
 .sheet h2{margin:0;font-size:18px}
 .seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
 .seg button{flex:1;padding:8px 4px;border-radius:9px;font-size:14px}
