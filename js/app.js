@@ -606,16 +606,17 @@ function renderSession(){
     el("div",{class:"shead"},el("button",{class:"iconbtn","aria-label":"그만하기",onclick:endSession},icon("close")),el("div",{class:"bar"},el("i",{style:"width:"+pct+"%"})),again?el("span",{class:"againpill num"},SES.round+"바퀴째 · "+(SES.rDone+1)+"/"+total):el("span",{class:"num small muted"},(SES.rDone+1)+"/"+total)),
     el("div",{class:"deck"},card),
     rates,
-    fresh&&SES.mode==="today"?el("button",{class:"skipknown",onclick:()=>doRate(id,"skip")},"이미 아는 단어야 (빼기)"):null)));
+    el("button",{class:"skipknown",onclick:()=>doRate(id,"skip")},"이미 아는 단어야 (빼기)"))));
   if(PREF.speak&&!SES.flipped&&SES.front==="en")speak(w.w);
 }
 function flip(){SES.flipped=!SES.flipped;renderSession();if(SES.flipped&&PREF.speak&&SES.front==="ko"){const w=byId(SES.q[SES.pos]);if(w)speak(w.w)}}
 function doRate(id,kind){
+  const wasNew=!recOf(id);
   rate(id,kind);SES.seen++;
   if(kind==="skip")SES.rSkip++;else SES.rDone++;
   // 몰랐음·애매 wait until the whole round is done, then come back as a new round in a fresh order
   if((kind==="no"||kind==="unsure")&&!SES.pending.includes(id))SES.pending.push(id);
-  if(kind==="skip"&&SES.mode==="today"){const inQ=new Set(SES.q);const nx=allWords().find(w=>!recOf(w.id)&&!inQ.has(w.id));if(nx)SES.q.push(nx.id)}
+  if(kind==="skip"&&wasNew&&SES.mode==="today"){const inQ=new Set(SES.q);const nx=allWords().find(w=>!recOf(w.id)&&!inQ.has(w.id));if(nx)SES.q.push(nx.id)}
   SES.pos++;
   if(SES.pos>=SES.q.length&&SES.pending.length){let nx=shuffle(SES.pending);if(nx.length>1&&nx[0]===id){nx.push(nx.shift())}
     SES.q.push(...nx);SES.round++;SES.rStart=SES.pos;SES.rDone=0;SES.rSkip=0;SES.pending=[]}SES.flipped=false;SES.front=frontFor();
