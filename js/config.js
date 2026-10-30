@@ -11,5 +11,5 @@ window.CONFIG = {
   // Google Cloud 콘솔 → 사용자 인증 정보 → 「Web client (auto created by Google Service)」의 클라이언트 ID
   googleClientId: "534444176449-jrit5ap80qbjgl4oj21ih6a88k56jofr.apps.googleusercontent.com",
   // 사진 읽기 중계 서버(Cloudflare Worker) 주소. 비우면 사진 읽기를 쓸 수 없다
-  workerUrl: ""
+  workerUrl: "https://toefl-vocab-ocr.hyobeen-moon.workers.dev"
 };
