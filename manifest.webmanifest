@@ -1,0 +1,13 @@
+{
+  "name": "토플 단어장",
+  "short_name": "단어장",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F2F0F9",
+  "theme_color": "#7356D0",
+  "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-32.png", "sizes": "32x32", "type": "image/png" }
+  ]
+}

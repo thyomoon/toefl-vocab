@@ -1,0 +1,32 @@
+rules_version = '2';
+// 단어장(space) 하나 = 학습자 한 명 + 응원하는 사람들. 멤버만 단어장 안의 기록을 읽고 쓴다.
+// Firebase 콘솔 → Firestore Database → 규칙 탭에 이 파일 내용을 그대로 붙여넣고 「게시」.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function space(sid) { return get(/databases/$(database)/documents/spaces/$(sid)).data; }
+
+    match /spaces/{sid} {
+      // 초대 링크를 연 사람은 들어오기 전에 단어장 이름을 볼 수 있어야 한다 (링크 id는 추측하기 어렵다)
+      allow get: if signedIn();
+      allow list: if signedIn() && request.auth.uid in resource.data.memberUids;
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.memberUids == [request.auth.uid];
+      // 만든 사람은 이름 등을 고칠 수 있고, 초대받은 사람은 자기 자신만 멤버로 더할 수 있다
+      allow update: if signedIn() && (
+        resource.data.ownerUid == request.auth.uid
+          && request.resource.data.ownerUid == resource.data.ownerUid
+        || !(request.auth.uid in resource.data.memberUids)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids', 'members'])
+          && request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid])
+          && request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([request.auth.uid])
+      );
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+
+      match /{rest=**} {
+        allow read, write: if signedIn() && request.auth.uid in space(sid).memberUids;
+      }
+    }
+  }
+}
