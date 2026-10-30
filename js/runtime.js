@@ -129,6 +129,7 @@ RT.switchTo=sid=>{try{localStorage.setItem(LS_SPACE,sid)}catch{}location.href=RE
 RT.newSpace=()=>{location.href=REDIRECT+"?new=1"};
 RT.signOut=async()=>{await auth.signOut();try{localStorage.removeItem(LS_SPACE)}catch{}location.href=REDIRECT};
 RT.renameLearner=name=>fs.doc("spaces/"+RT.sid).update({learnerName:name});
+RT.renameMe=name=>fs.doc("spaces/"+RT.sid).update({["members."+RT.uid+".name"]:name,...(RT.space.ownerUid===RT.uid?{ownerName:name}:{}),...(RT.myRole()==="learner"&&RT.space.ownerUid===RT.uid?{learnerName:name}:{})});
 
 /* ============ db: the artifact store's API on Firestore, every path under spaces/{sid}/ */
 const CODES={"permission-denied":"not_granted","resource-exhausted":"quota_exceeded","invalid-argument":"invalid_argument","unauthenticated":"session_expired"};

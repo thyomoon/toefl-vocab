@@ -499,8 +499,12 @@ function inviteBtn(as,label){
 }
 function viewBookSettings(){
   const others=RT.spaces.filter(s=>s.id!==RT.sid);
+  const meForm=S.isOwner?el("form",{class:"composer slim",onsubmit:e=>{e.preventDefault();const v=$("#mnameIn").value.trim().slice(0,20);if(v&&v!==nameMe())RT.renameMe(v).then(()=>{toast("내 이름을 바꿨어");render()},()=>toast("이름을 바꾸지 못했어"))}},
+    el("input",{id:"mnameIn",value:nameMe(),maxlength:"20","aria-label":"내 이름"}),el("button",{class:"btn",type:"submit"},"내 이름 저장")):null;
   return el("div",{class:"field"},el("label",null,"단어장"),
-    S.isOwner?el("form",{class:"composer slim",onsubmit:e=>{e.preventDefault();const v=$("#lnameIn").value.trim().slice(0,20);if(v&&v!==nameL())RT.renameLearner(v).then(()=>{toast("이름을 바꿨어");render()},()=>toast("이름을 바꾸지 못했어"))}},
+    meForm?el("p",{class:"small muted",style:"margin:0"},"내 이름"):null,meForm,
+    S.isOwner&&S.supportOnly?el("p",{class:"small muted",style:"margin:0"},"공부하는 사람 이름"):null,
+    S.isOwner&&S.supportOnly?el("form",{class:"composer slim",onsubmit:e=>{e.preventDefault();const v=$("#lnameIn").value.trim().slice(0,20);if(v&&v!==nameL())RT.renameLearner(v).then(()=>{toast("이름을 바꿨어");render()},()=>toast("이름을 바꾸지 못했어"))}},
       el("input",{id:"lnameIn",value:nameL(),maxlength:"20","aria-label":"공부하는 사람 이름"}),el("button",{class:"btn",type:"submit"},"이름 저장")):null,
     S.cfg.learnerId?null:inviteBtn("learner","공부할 사람 초대 링크"),
     inviteBtn("supporter","응원할 사람 초대 링크"),
