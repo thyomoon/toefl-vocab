@@ -54,7 +54,7 @@ const ICON={
 function icon(n){return el("span",{svg:ICON[n],style:"display:contents"})}
 
 /* ============ state */
-const DEF_CFG={exam:"2026-12-12",daily:20,learnerId:null};
+const DEF_CFG={exam:"2026-12-12",daily:10,learnerId:null};
 const INT=[0,1,3,7,14,30,60];
 const S={mode:"init",db:null,user:null,sample:null,canImg:false,me:null,isOwner:false,
   cfg:{...DEF_CFG},cfgExists:false,ctx:"ina",ctxs:{ina:{log:{},prog:{w:{},days:{},st:{}},progExists:false},me:{log:{},prog:{w:{},days:{},st:{}},progExists:false,got:false}},custom:[],customAll:[],trash:[],cheers:[],
@@ -82,25 +82,19 @@ function loadLocal(){const d=lsGet("tv-local",null);if(d){S.cfg={...DEF_CFG,...(
 function saveLocal(){if(S.mode!=="local")return;lsSet("tv-local",{cfg:S.cfg,prog:S.ctxs.ina.prog,custom:S.customAll||S.custom,cheers:S.cheers,log:S.ctxs.ina.log})}
 
 /* ============ plan */
-/* daily load control: at most DAY_CAP cards a day in total (reviews + new, counting what is already done today).
-   reviews go first (lowest box, most overdue first) but MIN_NEW slots stay for new words; the rest waits for tomorrow.
-   when the review pile is big the day's new words are halved */
-const DAY_CAP=50,MIN_NEW=10,REVIEW_CAP=90,BACKLOG_HALF=100;
+/* daily load: the day's new words (setting, default 10) always come, whatever the review pile;
+   reviews (lowest box, most overdue first) are capped at REVIEW_CAP a day, the rest waits for tomorrow */
+const REVIEW_CAP=50;
 function todayPlan(){
   const t=ymd(),P=S.prog.w,W=allWords();let due=[],fresh=[];let intro=0,done=0,reviewed=0;
   for(const w of W){const r=P[w.id];if(!r)continue;if(r.l===t&&r.i!=="skip")done++;if(r.i===t)intro++;else if(r.l===t&&r.i!=="skip")reviewed++;if(r.d&&r.d<=t&&r.l!==t)due.push(w.id)}
-  const backlog=due.length+reviewed;
   due.sort((a,b)=>((P[a].b||0)-(P[b].b||0))||String(P[a].d).localeCompare(String(P[b].d)));
-  const daily=Number(S.cfg.daily)||20;const newLimit=backlog>=BACKLOG_HALF?Math.ceil(daily/2):daily;
-  let avail=0;for(const w of W)if(!P[w.id])avail++;
-  const newWanted=Math.min(avail,Math.max(0,newLimit-intro));
-  const room=Math.max(0,DAY_CAP-intro-reviewed);
-  const reserve=Math.min(newWanted,Math.max(0,MIN_NEW-intro));
-  const quota=Math.min(Math.max(0,REVIEW_CAP-reviewed),Math.max(0,room-reserve));
+  const daily=Number(S.cfg.daily)||10;
+  const quota=Math.max(0,REVIEW_CAP-reviewed);
   const deferred=Math.max(0,due.length-quota);due=due.slice(0,quota);
-  const left=Math.min(newWanted,room-due.length);
+  const left=Math.max(0,daily-intro);
   for(const w of W){if(fresh.length>=left)break;if(!P[w.id])fresh.push(w.id)}
-  return {due,fresh,done,deferred,halved:newLimit<daily,capped:fresh.length<newWanted,remaining:[...due,...fresh]};
+  return {due,fresh,done,deferred,remaining:[...due,...fresh]};
 }
 function lastMark(r){const h=r&&r.h||"";return h?h[h.length-1]:(r&&r.b>0?"K":"")}
 // 외운 단어 = words whose latest card answer was 알았음 (애매·몰랐음 excluded)
@@ -312,7 +306,7 @@ function viewHome(){
   }else if(rem.length){
     card=el("div",{class:"stack"},el("div",{class:"startcard"},
       el("div",{class:"startlogo","aria-hidden":"true",svg:CAT_SVG}),
-      el("button",{class:"go",onclick:()=>startSession(rem,"today")},el("span",{style:"display:flex;flex-direction:column;align-items:flex-start;gap:2px"},"단어 넘기기 시작",el("span",{class:"sub num"},"오늘 "+rem.length+"개 남음"+(plan.halved?" · 복습이 많아서 새 단어는 절반만":"")+(plan.deferred?" · 복습 "+plan.deferred+"개는 내일로":"")+(plan.capped&&!plan.deferred?" · 하루 최대 50개":""))),icon("arrow"))));
+      el("button",{class:"go",onclick:()=>startSession(rem,"today")},el("span",{style:"display:flex;flex-direction:column;align-items:flex-start;gap:2px"},"단어 넘기기 시작",el("span",{class:"sub num"},"오늘 "+rem.length+"개 남음"+(plan.deferred?" · 복습 "+plan.deferred+"개는 내일로":""))),icon("arrow"))));
   }else{
     card=el("div",{class:"stack"},el("div",{class:"startcard"},el("div",{class:"donebox"},catArt("small"),el("span",{class:"big"},"오늘 분량 끝!"),el("span",{class:"muted"},plan.done+"개 봤어. 내일 다시 만날 단어들 챙겨둘게.")),
       el("button",{class:"go",onclick:()=>startExtra()},el("span",null,"추가로 복습하기"),icon("arrow"))));
@@ -426,7 +420,7 @@ function viewOnboarding(){
       el("p",{class:"muted",style:"margin:0"},"날짜를 정하면 남은 날에 맞춰서 하루 분량을 챙겨줄게. 날짜는 나중에 바꿀 수도 있으니까 너무 걱정하지 마."),
       el("div",{class:"field"},el("label",{for:"obExam"},"시험 날짜"),el("input",{id:"obExam",type:"date",value:S.cfg.exam,min:ymd(),onchange:e=>{const v=e.target.value;if(/^\d{4}-\d{2}-\d{2}$/.test(v)&&v!==S.cfg.exam)saveCfg({exam:v})}})),
       el("div",{class:"obdday"},el("b",{class:"num"},left>0?"D-"+left:left===0?"D-DAY":"날짜를 확인해줘"),el("span",null,fmtExam(S.cfg.exam)+"까지 · 하루 새 단어 "+S.cfg.daily+"개")),
-      el("div",{class:"field"},el("label",{for:"obDaily"},"하루에 몇 개씩 외울까?"),el("select",{id:"obDaily",onchange:e=>saveCfg({daily:Number(e.target.value)})},[20,30,50].map(v=>{const o=el("option",{value:String(v)},v+"개");if(Number(S.cfg.daily)===v)o.selected=true;return o})),el("span",{class:"small muted"},"더 많이 외우고 싶으면 나한테 말해줘. 추가해줄게!")),
+      el("div",{class:"field"},el("label",{for:"obDaily"},"하루에 몇 개씩 외울까?"),el("select",{id:"obDaily",onchange:e=>saveCfg({daily:Number(e.target.value)})},[10,20,30,50].map(v=>{const o=el("option",{value:String(v)},v+"개");if(Number(S.cfg.daily)===v)o.selected=true;return o})),el("span",{class:"small muted"},"더 많이 외우고 싶으면 나한테 말해줘. 추가해줄게!")),
       el("button",{class:"btn primary block",style:"padding:16px;font-size:17px",disabled:left<0,onclick:()=>{OB.step=3;window.scrollTo(0,0);render()}},"다음")));}
   if(step===4)return viewObInstall();
   const added=BK.last?BK.last.added.length:0;
@@ -470,7 +464,7 @@ function viewSheet(){
   return el("div",{class:"scrim",onclick:e=>{if(e.target===e.currentTarget)close()}},el("div",{class:"sheet",role:"dialog","aria-label":"설정"},
     el("div",{class:"rowline"},el("h2",null,"설정"),el("button",{class:"iconbtn","aria-label":"닫기",onclick:close},icon("close"))),
     el("div",{class:"field"},el("label",{for:"examDate"},"토플 시험 날짜"),el("input",{id:"examDate",type:"date",value:S.cfg.exam,onchange:e=>{const v=e.target.value;if(/^\d{4}-\d{2}-\d{2}$/.test(v)&&v!==S.cfg.exam)saveCfg({exam:v})}}),el("span",{class:"small muted"},"저장된 날짜: "+fmtExam(S.cfg.exam)+" (D-"+Math.max(0,daysBetween(ymd(),S.cfg.exam))+")")),
-    learner?el("div",{class:"field"},el("label",{for:"daily"},"하루 새 단어"),el("select",{id:"daily",onchange:e=>saveCfg({daily:Number(e.target.value)})},[20,30,50].map(v=>{const o=el("option",{value:String(v)},v+"개");if(Number(S.cfg.daily)===v)o.selected=true;return o}))):null,
+    learner?el("div",{class:"field"},el("label",{for:"daily"},"하루 새 단어"),el("select",{id:"daily",onchange:e=>saveCfg({daily:Number(e.target.value)})},[10,20,30,50].map(v=>{const o=el("option",{value:String(v)},v+"개");if(Number(S.cfg.daily)===v)o.selected=true;return o}))):null,
     learner?el("div",{class:"field"},el("label",null,"카드 앞면"),el("div",{class:"seg",role:"group"},[["en","영어"],["ko","한국어"],["mix","섞기"]].map(([v,l])=>el("button",{class:PREF.dir===v?"on":"",onclick:()=>{PREF.dir=v;savePref();render()}},l)))):null,
     learner&&"speechSynthesis" in window?el("div",{class:"field"},el("label",null,"카드가 나올 때 발음 자동 재생"),el("div",{class:"seg",role:"group"},[[true,"켜기"],[false,"끄기"]].map(([v,l])=>el("button",{class:PREF.speak===v?"on":"",onclick:()=>{PREF.speak=v;savePref();render()}},l)))):null,
     S.mode==="remote"&&S.isOwner&&S.cfg.learnerId===S.me?el("div",{class:"field"},el("label",null,"화면 보기 (테스트용)"),el("div",{class:"seg",role:"group"},[[false,nameL()+" 화면"],[true,nameO()+" 화면"]].map(([v,l])=>el("button",{class:!!PREF.asSupport===v?"on":"",onclick:()=>{PREF.asSupport=v;savePref();S.sheet=false;decideRole();S.tab="home";render()}},l))),el("span",{class:"small muted"},"이 기기에서만 바뀌고, 기록은 그대로예요.")):null,
