@@ -995,9 +995,19 @@ async function readPage(opts,tail){
   // the headword list + 4-at-a-time path below is the fallback when that comes back empty
   BK.stage="단어와 뜻을 읽는 중";const st1=$("#bkStage");if(st1)st1.textContent=BK.stage;
   let all=null;
-  try{all=await ask(DETAIL_PROMPT+"\n이번에는 이 페이지의 표제어 전부를 번호 순서대로 답하세요."+tail,opts,240000)}
+  try{all=await ask(DETAIL_PROMPT+"\n이번에는 이 페이지의 표제어 전부를 번호 순서대로 답하세요. 한국어 뜻(\"ko\")은 모든 뜻 줄의 오른쪽 끝에 인쇄돼 있으니 비우지 말고 옮기세요."+tail,opts,240000)}
   catch(e){if(e&&e.code==="invalid_json")all=salvageArray(e.text);else if(!(e&&(e.code==="timeout"||e.code==="upstream_error")))throw e}
-  if(Array.isArray(all)&&all.length)return all;
+  if(Array.isArray(all)&&all.length){
+    // a long one-shot reply tends to leave the small Korean meanings blank; ask again for just those headwords
+    const hasKo=o=>Array.isArray(o&&o.senses)?o.senses.some(x=>x&&String(x.ko||"").trim()):!!String(o&&o.ko||"").trim();
+    const miss=all.filter(o=>o&&typeof o.w==="string"&&!hasKo(o)).map(o=>o.w.trim());
+    for(let k=0;k<miss.length&&k<24;k+=6){const b=miss.slice(k,k+6);BK.stage="빠진 뜻 다시 읽는 중 ("+Math.min(k+6,miss.length)+"/"+miss.length+")";const t=$("#bkStage");if(t)t.textContent=BK.stage;
+      let r=null;try{r=await ask(DETAIL_PROMPT+"\n이번에는 표제어 "+b.map(x=>'"'+x+'"').join(", ")+"만 답하세요. 각 뜻 줄의 오른쪽 끝에 작은 글씨로 인쇄된 한국어 뜻을 \"ko\"에 꼭 옮기세요."+tail,opts,150000)}
+      catch(e){if(e&&e.code==="invalid_json")r=salvageArray(e.text);else if(e&&(e.code==="rate_limited"||e.code==="cancelled"))break}
+      for(const o of Array.isArray(r)?r:[]){if(!o||typeof o.w!=="string"||!hasKo(o))continue;const i=all.findIndex(x=>x&&typeof x.w==="string"&&x.w.trim().toLowerCase()===o.w.trim().toLowerCase());if(i>=0)all[i]={...o,n:all[i].n??o.n}}
+      if(BK.ctl&&BK.ctl.signal.aborted)break}
+    return all;
+  }
   BK.stage="표제어 목록 읽는 중";const st0=$("#bkStage");if(st0)st0.textContent=BK.stage;
   let list=null;
   try{list=await ask(LIST_PROMPT+tail,opts,120000)}catch(e){if(e&&e.code==="invalid_json")list=salvageArray(e.text);else throw e}
@@ -1128,7 +1138,7 @@ async function ocrFile(file){
 async function onPhotos(fileList){
   const files=[...fileList].slice(0,10);if(!files.length)return;
   if(!S.sample){BK.err=noSampleMsg();render();return}
-  BK.busy=true;BK.err="";BK.numbered=0;BK.last={added:[],skipped:0,book:"내 책"};BK.ctl=new AbortController();
+  BK.busy=true;BK.err="";BK.numbered=0;BK.filled=0;BK.last={added:[],skipped:0,book:"내 책"};BK.ctl=new AbortController();
   const addedSet=new Set();
   try{
   for(let i=0;i<files.length;i++){
@@ -1157,6 +1167,11 @@ async function onPhotos(fileList){
       // words already in the list without a book number: just attach the number
       for(const c of cands){if(!c.dup||!c.no)continue;const ex=S.custom.find(x=>x.w.toLowerCase()===c.w&&!x.no);if(!ex)continue;ex.no=c.no;
         if(S.mode==="remote"){try{await timed(S.db.doc("custom/"+ex.docId).update({no:c.no}),20000);BK.numbered=(BK.numbered||0)+1}catch{}}else{BK.numbered=(BK.numbered||0)+1;saveLocal()}}
+      // words already in the list with a blank meaning: fill it from this read
+      for(const c of cands){if(!c.dup||!c.ko)continue;const ex=S.custom.find(x=>x.w.toLowerCase()===c.w&&!String(x.ko||"").trim());if(!ex)continue;
+        const patch={};for(const k of ["ko","pos","syn","fam","ex","exKo","senses","note","ph","stars"])if(c[k]!==undefined&&c[k]!==""&&!(Array.isArray(c[k])&&!c[k].length))patch[k]=c[k];
+        Object.assign(ex,patch);BK.filled=(BK.filled||0)+1;
+        if(S.mode==="remote"){try{await timed(S.db.doc("custom/"+ex.docId).update(patch),20000)}catch{}}else saveLocal()}
       BK.last.skipped+=cands.length-fresh.length;
       if(!cands.length)BK.err=(files.length>1?(i+1)+"번째 사진: ":"")+"단어를 못 찾았어. 단어가 잘 보이게 다시 찍어줘.";
       if(fresh.length){await addCustom(fresh);fresh.forEach(c=>{addedSet.add(c.w);BK.last.added.push(c.w)})}
@@ -1253,6 +1268,7 @@ function viewBook(){
       el("div",{class:"rowline"},el("h2",null,BK.last.added.length?"새 단어 "+BK.last.added.length+"개 넣었어":"새로 넣을 단어가 없어"),el("button",{class:"reshuffle",onclick:()=>{BK.last=null;render()}},"닫기")),
       BK.last.skipped?el("span",{class:"small muted"},"이미 단어장에 있는 "+BK.last.skipped+"개는 건너뛰었어."):null,
       BK.numbered?el("span",{class:"small muted"},"이미 있던 단어 "+BK.numbered+"개에 책 번호를 붙였어."):null,
+      BK.filled?el("span",{class:"small muted"},"뜻이 비어 있던 단어 "+BK.filled+"개에 뜻을 채웠어."):null,
       rows.length?el("ul",{class:"booklist"},rows.slice(0,3).map(wordRow)):BK.last.added.length?el("span",{class:"small muted"},"단어장에 반영하는 중…"):null,
       rows.length>3?el("span",{class:"small muted"},"외 "+(rows.length-3)+"개는 아래 목록 첫 페이지에 있어."):null);
   }

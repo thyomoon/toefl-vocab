@@ -30,7 +30,7 @@ async function handle(req,env){
     const model=env.MODEL||"gemini-flash-latest";
     const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent",{method:"POST",
       headers:{"content-type":"application/json","x-goog-api-key":env.GEMINI_API_KEY},
-      body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{responseMimeType:"application/json",temperature:0.2,maxOutputTokens:32768}})});
+      body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{responseMimeType:"application/json",temperature:0.2,maxOutputTokens:32768,mediaResolution:"MEDIA_RESOLUTION_HIGH"}})});
     if(r.status===429)return fail("rate_limited",429);
     if(!r.ok){const t=await r.text();let m=t;try{m=JSON.parse(t).error.message||t}catch{}
       return fail(r.status===400&&/image/i.test(t)?"image_rejected":"upstream_error",502,"Gemini "+r.status+": "+String(m).slice(0,300))}
