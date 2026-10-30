@@ -56,12 +56,12 @@ async function loadSpaces(){
   const q=await fs.collection("spaces").where("memberUids","array-contains",RT.uid).get();
   RT.spaces=q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
 }
-async function joinSpace(sid,as,name){
+async function joinSpace(sid,as){
   const ref=fs.doc("spaces/"+sid);let s;
   try{s=await ref.get()}catch{s=null}
   if(!s||!s.exists)return "초대 링크가 맞지 않아. 링크를 다시 받아줘.";
   if((s.data().memberUids||[]).includes(RT.uid))return null;
-  await ref.update({memberUids:firebase.firestore.FieldValue.arrayUnion(RT.uid),["members."+RT.uid]:{name,role:as}});
+  await ref.update({memberUids:firebase.firestore.FieldValue.arrayUnion(RT.uid),["members."+RT.uid]:{role:as}});
   return null;
 }
 function showCreate(name,canCancel){
@@ -73,11 +73,11 @@ function showCreate(name,canCancel){
   drawSeg();
   const err=h("p",{class:"note",role:"alert",hidden:true});
   const go=h("button",{class:"btn primary block",style:"padding:16px;font-size:17px",onclick:async()=>{
-    const learner=learnerIn.value.trim(),me=mode==="learner"?learner:name||"응원하는 사람";
+    const learner=learnerIn.value.trim();
     if(!learner){err.textContent="공부하는 사람 이름을 적어줘.";err.hidden=false;return}
     go.disabled=true;
     try{const ref=fs.collection("spaces").doc();
-      await ref.set({ownerUid:RT.uid,memberUids:[RT.uid],members:{[RT.uid]:{name:me,role:mode}},learnerName:learner,ownerName:me,createdAt:Date.now()});
+      await ref.set({ownerUid:RT.uid,memberUids:[RT.uid],members:{[RT.uid]:{role:mode}},learnerName:learner,createdAt:Date.now()});
       history.replaceState(null,"",REDIRECT);await start(ref.id)}
     catch(e){go.disabled=false;err.textContent="만들지 못했어. 잠시 뒤 다시 해줘.";err.hidden=false}}},"단어장 만들기");
   gate(h("h1",{class:"hero"},"새 단어장 만들기"),
@@ -89,6 +89,11 @@ async function start(sid){
   RT.sid=sid;
   const ref=fs.doc("spaces/"+sid);
   RT.space=(await ref.get()).data();
+  // names of the people who are not studying are no longer kept: clear the ones saved by earlier versions
+  if(RT.space.ownerUid===RT.uid&&(RT.space.ownerName!==undefined||Object.values(RT.space.members||{}).some(m=>m&&m.name!==undefined))){
+    const del=firebase.firestore.FieldValue.delete(),patch={ownerName:del};
+    for(const uid in RT.space.members||{})if(RT.space.members[uid]&&RT.space.members[uid].name!==undefined)patch["members."+uid+".name"]=del;
+    ref.update(patch).catch(()=>{})}
   ref.onSnapshot(s=>{if(s.exists){RT.space=s.data();setTitle()}},()=>{});
   try{localStorage.setItem(LS_SPACE,sid)}catch{}
   setTitle();closeGate();resolveReady();
@@ -104,7 +109,7 @@ auth.onAuthStateChanged(async u=>{
   try{
     const join=q.get("join");
     if(join){
-      const msg=await joinSpace(join,q.get("as")==="supporter"?"supporter":"learner",myName);
+      const msg=await joinSpace(join,q.get("as")==="supporter"?"supporter":"learner");
       history.replaceState(null,"",REDIRECT);
       if(msg){gate(h("p",{class:"note",role:"alert"},msg),h("button",{class:"btn block",onclick:()=>location.reload()},"내 단어장으로"));return}
       await loadSpaces();await start(join);return;
@@ -119,8 +124,6 @@ finishRedirect().catch(e=>{redirecting=false;showLogin("로그인하지 못했�
 
 /* ============ what the app reads from here */
 RT.learnerName=()=>(RT.space&&RT.space.learnerName)||"학습자";
-RT.ownerName=()=>(RT.space&&RT.space.ownerName)||"응원하는 사람";
-RT.nameOf=uid=>{const m=RT.space&&RT.space.members&&RT.space.members[uid];return m&&m.name||null};
 RT.myRole=()=>{const m=RT.space&&RT.space.members&&RT.space.members[RT.uid];return m&&m.role||"learner"};
 RT.invite=as=>REDIRECT+"?"+new URLSearchParams({join:RT.sid,as});
 RT.switchTo=sid=>{try{localStorage.setItem(LS_SPACE,sid)}catch{}location.href=REDIRECT};

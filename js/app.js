@@ -65,8 +65,6 @@ const PREF=Object.assign({dir:"en",speak:false,book:"",tn:10,asSupport:false},ls
 function savePref(){lsSet("tv-pref",PREF)}
 /* names come from the word book (js/runtime.js); preview mode keeps the original two */
 function nameL(){return window.RT?RT.learnerName():"이나"}
-function nameO(){return window.RT?RT.ownerName():"Taylor"}
-function nameMe(){return (window.RT&&RT.nameOf(S.me))||nameO()}
 /* particle after a name, batchim form first: josa("이나","이/가") → "이나가", josa("민준","아/야") → "민준아" */
 function josa(n,pair){const [a,b]=pair.split("/");const c=n.charCodeAt(n.length-1);return n+(c>=0xAC00&&c<=0xD7A3&&(c-0xAC00)%28>0?a:b)}
 
@@ -318,7 +316,7 @@ function viewHome(){
   const nudge=!mine&&S.role==="learner"&&hr>=22&&plan.done>0&&!testedToday()?el("button",{class:"nudge",onclick:()=>goTab("test")},
     el("b",null,hr>=23?"🌙 11시야! 자기 전에 테스트 한 번만":"⏰ 10시야! 오늘 외운 거 테스트해 볼까?"),
     el("span",null,"오늘 단어는 다 봤는데 테스트를 아직 안 봤어. 10문제면 금방이야 →")):null;
-  return el("main",{class:"wrap"},header(mine?nameMe()+"의 단어장":nameL()+"의 단어장"),mine?el("p",{class:"small muted",style:"margin:0"},josa(nameL(),"과/와")+" 같은 단어를 외워요. 내 기록은 "+nameL()+" 진도에 섞이지 않아요."):null,nudge,card,retestBtn,
+  return el("main",{class:"wrap"},header(mine?"내 단어장":nameL()+"의 단어장"),mine?el("p",{class:"small muted",style:"margin:0"},josa(nameL(),"과/와")+" 같은 단어를 외워요. 내 기록은 "+nameL()+" 진도에 섞이지 않아요."):null,nudge,card,retestBtn,
     el("section",{class:"panel","aria-label":"진도"},
       el("button",{class:"rowline daybtn",onclick:()=>{S.daySheet=0;BK.open=null;BK.pages.day=0;render()},"aria-haspopup":"dialog"},el("h2",null,"오늘"),el("span",{class:"num small"},plan.done+" / "+total+" · 본 단어 보기 ›")),
       el("div",{class:"bar",role:"progressbar","aria-valuenow":pct,"aria-valuemin":0,"aria-valuemax":100},el("i",{style:"width:"+pct+"%"})),
@@ -343,7 +341,7 @@ function oneLine(c,label){
   return el("button",{class:"oneline"+(unread?" unread":"")+(LN.open?" open":""),onclick:()=>{LN.open=!LN.open;render()},"aria-expanded":LN.open?"true":"false"},
     el("span",{class:"who"},label),el("span",{class:"txt"},c.text),el("span",{class:"tm"},ago(c.at||0)));
 }
-function taylorBanner(){return oneLine(S.cheers.filter(isTaylorMsg).sort((a,b)=>(b.at||0)-(a.at||0))[0],"💬 "+nameO())}
+function taylorBanner(){return oneLine(S.cheers.filter(isTaylorMsg).sort((a,b)=>(b.at||0)-(a.at||0))[0],"💬 응원")}
 /* small cheer box on home: 2 latest messages from Taylor + 2 latest automatic news; Taylor (owner/supporter) can send */
 /* cheer box: today's messages and alerts only, as status rows (newest at the bottom); box fits two rows and scrolls */
 const CB={top:0,atBottom:true};
@@ -354,7 +352,7 @@ function cheerBox(){
   const seen=seenAt();setTimeout(()=>lsSet("tv-seen",Date.now()),0);
   const mineView=S.role==="supporter"||S.isOwner||S.mode==="local";
   const row=c=>{const auto=isAuto(c);return el("li",{class:"cb-row "+(auto?"news":"msg")+((c.at||0)>seen&&!auto&&!mineView?" unread":"")},
-    el("span",{class:"cb-tag"},auto?"🔔 알림":"💬 "+((window.RT&&RT.nameOf(c.by))||nameO())),el("span",{class:"txt"},auto?c.text.replace(/^\S+\s/,""):c.text))};
+    el("span",{class:"cb-tag"},auto?"🔔 알림":"💬 "+(c.by&&c.by===S.cfg.learnerId?nameL():"응원")),el("span",{class:"txt"},auto?c.text.replace(/^\S+\s/,""):c.text))};
   const send=()=>{const i=$("#cheerIn");if(!i)return;const v=i.value.trim();if(!v)return;i.value="";i.dataset.fresh="1";
     if(S.mode!=="local"){S.cheers=[{id:"tmp"+Date.now(),by:S.me,text:v,kind:"msg",at:Date.now()},...S.cheers];CB.atBottom=true;render()}
     postCheer(v).catch(()=>{});setTimeout(()=>{delete i.dataset.fresh},0)};
@@ -401,7 +399,7 @@ async function claim(){
 const OB={step:1};
 function obFrame(step,body){
   return el("main",{class:"wrap onb"},
-    step>1&&S.isOwner?el("button",{class:"reshuffle",style:"align-self:flex-end",onclick:()=>{PREF.asSupport=true;savePref();decideRole();S.tab="home";render()}},nameO()+" 화면 보기"):null,
+    step>1&&S.isOwner?el("button",{class:"reshuffle",style:"align-self:flex-end",onclick:()=>{PREF.asSupport=true;savePref();decideRole();S.tab="home";render()}},"응원 화면 보기"):null,
     el("div",{class:"obsteps","aria-label":"단계 "+step+" / 4"},[1,2,3,4].map(i=>el("i",{class:i<=step?"on":""}))),
     body);
 }
@@ -467,7 +465,7 @@ function viewSheet(){
     learner?el("div",{class:"field"},el("label",{for:"daily"},"하루 새 단어"),el("select",{id:"daily",onchange:e=>saveCfg({daily:Number(e.target.value)})},[10,20,30,50].map(v=>{const o=el("option",{value:String(v)},v+"개");if(Number(S.cfg.daily)===v)o.selected=true;return o}))):null,
     learner?el("div",{class:"field"},el("label",null,"카드 앞면"),el("div",{class:"seg",role:"group"},[["en","영어"],["ko","한국어"],["mix","섞기"]].map(([v,l])=>el("button",{class:PREF.dir===v?"on":"",onclick:()=>{PREF.dir=v;savePref();render()}},l)))):null,
     learner&&"speechSynthesis" in window?el("div",{class:"field"},el("label",null,"카드가 나올 때 발음 자동 재생"),el("div",{class:"seg",role:"group"},[[true,"켜기"],[false,"끄기"]].map(([v,l])=>el("button",{class:PREF.speak===v?"on":"",onclick:()=>{PREF.speak=v;savePref();render()}},l)))):null,
-    S.mode==="remote"&&S.isOwner&&S.cfg.learnerId===S.me?el("div",{class:"field"},el("label",null,"화면 보기 (테스트용)"),el("div",{class:"seg",role:"group"},[[false,nameL()+" 화면"],[true,nameO()+" 화면"]].map(([v,l])=>el("button",{class:!!PREF.asSupport===v?"on":"",onclick:()=>{PREF.asSupport=v;savePref();S.sheet=false;decideRole();S.tab="home";render()}},l))),el("span",{class:"small muted"},"이 기기에서만 바뀌고, 기록은 그대로예요.")):null,
+    S.mode==="remote"&&S.isOwner&&S.cfg.learnerId===S.me?el("div",{class:"field"},el("label",null,"화면 보기 (테스트용)"),el("div",{class:"seg",role:"group"},[[false,nameL()+" 화면"],[true,"응원 화면"]].map(([v,l])=>el("button",{class:!!PREF.asSupport===v?"on":"",onclick:()=>{PREF.asSupport=v;savePref();S.sheet=false;decideRole();S.tab="home";render()}},l))),el("span",{class:"small muted"},"이 기기에서만 바뀌고, 기록은 그대로예요.")):null,
     S.mode==="remote"&&S.isOwner?el("div",{class:"field"},el("label",null,"학습자 연결"),
       el("p",{class:"small",style:"margin:0"},!S.cfg.learnerId?"아직 연결된 학습자가 없어요.":S.cfg.learnerId===S.me?"지금은 내 계정이 학습자로 연결돼 있어요 (테스트용).":josa(nameL(),"이/가")+" 학습자로 연결돼 있어요."),
       S.cfg.learnerId?(confirmReset?el("div",{style:"display:flex;flex-direction:column;gap:8px"},
@@ -879,7 +877,7 @@ function answer(val){
 function viewTest(){
   if(!TST.active){
     const pool=testPool();
-    return el("main",{class:"wrap"},header(S.ctx==="me"?nameMe()+"의 테스트":"테스트"),
+    return el("main",{class:"wrap"},header(S.ctx==="me"?"내 테스트":"테스트"),
       S.ctx==="me"?el("button",{class:"reshuffle",style:"align-self:flex-start",onclick:()=>goTab("mine")},"‹ 내 공부로"):null,
       todayTestPanel(),
       el("section",{class:"panel","aria-label":"새 테스트"},
