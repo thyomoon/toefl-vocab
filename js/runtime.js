@@ -66,23 +66,21 @@ async function joinSpace(sid,as,name){
 }
 function showCreate(name,canCancel){
   let mode="learner";
-  const nameIn=h("input",{id:"gName",value:name,maxlength:"20",autocomplete:"off"});
-  const learnerIn=h("input",{id:"gLearner",maxlength:"20",autocomplete:"off",placeholder:"예: 이나"});
-  const learnerField=h("div",{class:"field",hidden:true},h("label",{for:"gLearner"},"공부하는 사람 이름"),learnerIn);
+  const learnerIn=h("input",{id:"gLearner",value:name,maxlength:"20",autocomplete:"off",placeholder:"예: 이나"});
+  const learnerField=h("div",{class:"field"},h("label",{for:"gLearner"},"공부하는 사람 이름"),learnerIn);
   const seg=h("div",{class:"seg",role:"group"});
-  const drawSeg=()=>seg.replaceChildren(...[["learner","내가 공부해요"],["supporter","다른 사람을 응원해요"]].map(([v,l])=>h("button",{type:"button",class:mode===v?"on":"",onclick:()=>{mode=v;learnerField.hidden=v!=="supporter";drawSeg()}},l)));
+  const drawSeg=()=>seg.replaceChildren(...[["learner","내가 공부해요"],["supporter","다른 사람을 응원해요"]].map(([v,l])=>h("button",{type:"button",class:mode===v?"on":"",onclick:()=>{if(mode!==v&&learnerIn.value.trim()===(mode==="learner"?name:""))learnerIn.value=v==="learner"?name:"";mode=v;drawSeg()}},l)));
   drawSeg();
   const err=h("p",{class:"note",role:"alert",hidden:true});
   const go=h("button",{class:"btn primary block",style:"padding:16px;font-size:17px",onclick:async()=>{
-    const me=nameIn.value.trim(),learner=mode==="learner"?me:learnerIn.value.trim();
-    if(!me||!learner){err.textContent="이름을 적어줘.";err.hidden=false;return}
+    const learner=learnerIn.value.trim(),me=mode==="learner"?learner:name||"응원하는 사람";
+    if(!learner){err.textContent="공부하는 사람 이름을 적어줘.";err.hidden=false;return}
     go.disabled=true;
     try{const ref=fs.collection("spaces").doc();
       await ref.set({ownerUid:RT.uid,memberUids:[RT.uid],members:{[RT.uid]:{name:me,role:mode}},learnerName:learner,ownerName:me,createdAt:Date.now()});
       history.replaceState(null,"",REDIRECT);await start(ref.id)}
     catch(e){go.disabled=false;err.textContent="만들지 못했어. 잠시 뒤 다시 해줘.";err.hidden=false}}},"단어장 만들기");
   gate(h("h1",{class:"hero"},"새 단어장 만들기"),
-    h("div",{class:"field"},h("label",{for:"gName"},"내 이름"),nameIn),
     h("div",{class:"field"},h("label",null,"누가 공부하나요?"),seg),
     learnerField,err,go,
     canCancel?h("button",{class:"btn block",onclick:()=>{history.replaceState(null,"",REDIRECT);location.reload()}},"취소"):null);
@@ -129,7 +127,6 @@ RT.switchTo=sid=>{try{localStorage.setItem(LS_SPACE,sid)}catch{}location.href=RE
 RT.newSpace=()=>{location.href=REDIRECT+"?new=1"};
 RT.signOut=async()=>{await auth.signOut();try{localStorage.removeItem(LS_SPACE)}catch{}location.href=REDIRECT};
 RT.renameLearner=name=>fs.doc("spaces/"+RT.sid).update({learnerName:name});
-RT.renameMe=name=>fs.doc("spaces/"+RT.sid).update({["members."+RT.uid+".name"]:name,...(RT.space.ownerUid===RT.uid?{ownerName:name}:{}),...(RT.myRole()==="learner"&&RT.space.ownerUid===RT.uid?{learnerName:name}:{})});
 
 /* ============ db: the artifact store's API on Firestore, every path under spaces/{sid}/ */
 const CODES={"permission-denied":"not_granted","resource-exhausted":"quota_exceeded","invalid-argument":"invalid_argument","unauthenticated":"session_expired"};
