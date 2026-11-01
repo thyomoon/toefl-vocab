@@ -1460,3 +1460,23 @@ async function boot(){
   subscribe();render();
 }
 boot();
+
+/* ============ self-update: the iPhone home-screen app keeps an old index.html until it is fully closed.
+   When the app comes back to the front, ask the server for index.html (bypassing the cache) and
+   reload if its ?v= is newer — but never in the middle of cards, a test, a photo read or an edit */
+const APP_V=(/[?&]v=(\d+)/.exec((document.querySelector('script[src*="js/app.js"]')||{}).src||"")||[])[1];
+let updAt=0,updReady=false;
+async function checkUpdate(){
+  if(!APP_V||location.protocol==="file:"||Date.now()-updAt<60000)return;updAt=Date.now();
+  try{const t=await (await fetch(location.pathname,{cache:"reload"})).text(); // cache:"reload" also refreshes the stored copy
+    const m=/js\/app\.js\?v=(\d+)/.exec(t);if(m&&m[1]!==APP_V)updReady=true}catch{}
+  applyUpdate();
+}
+async function applyUpdate(){
+  if(!updReady||SES.active||TST.active||BK.busy||S.editWord)return;
+  try{await flush()}catch{}
+  location.reload();
+}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkUpdate()});
+setTimeout(checkUpdate,3000);
+setInterval(applyUpdate,30000); // a found update waits until the current session ends
