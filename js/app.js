@@ -1071,6 +1071,8 @@ function normSenses(arr,w){
 function normCands(arr,also){
   if(!Array.isArray(arr))return [];
   const have=new Set(S.custom.map(w=>w.w.toLowerCase()));if(also)for(const x of also)have.add(x);
+  const trashed=new Set((S.trash||[]).map(w=>w.w.toLowerCase())); // a word in the trash is restored, not added again
+  const dupOf=w=>have.has(w)||trashed.has(w),inTrash=w=>!have.has(w)&&trashed.has(w);
   const seen=new Set();const out=[];
   for(const o of arr){
     if(!o||typeof o.w!=="string")continue;const w=o.w.trim().toLowerCase().replace(/\s+/g," ").slice(0,40);if(!w||seen.has(w)||!/[a-z]/.test(w))continue;seen.add(w);
@@ -1080,8 +1082,8 @@ function normCands(arr,also){
     const senses=normSenses(o.senses,w);
     if(senses.length){const allSyn=[...new Set(senses.flatMap(s=>s.syn))];
       out.push({w,no:Number.isFinite(nn)&&nn>0&&nn<2000?nn:null,kb:true,pos:str(senses[0].pos,14),ko:str(senses.map(s=>s.ko).filter(Boolean).join("; "),160),ex:senses[0].ex,exKo:senses[0].exKo,fam:str(o.fam,140),syn:str(allSyn.join(", "),300),
-        senses,note:str(o.note,600),ph:str(o.ph,60).replace(/^\[|\]$/g,""),stars:Math.max(0,Math.min(3,parseInt(o.stars,10)||0)),dup:have.has(w)});continue}
-    out.push({w,no:Number.isFinite(nn)&&nn>0&&nn<2000?nn:null,kb:o.kb!==false,pos:str(o.pos,14),ko:str(o.ko,80),ex,exKo:str(o.exKo,300),fam:str(o.fam,140),syn:str(o.syn,160),dup:have.has(w)});
+        senses,note:str(o.note,600),ph:str(o.ph,60).replace(/^\[|\]$/g,""),stars:Math.max(0,Math.min(3,parseInt(o.stars,10)||0)),dup:dupOf(w),inTrash:inTrash(w)});continue}
+    out.push({w,no:Number.isFinite(nn)&&nn>0&&nn<2000?nn:null,kb:o.kb!==false,pos:str(o.pos,14),ko:str(o.ko,80),ex,exKo:str(o.exKo,300),fam:str(o.fam,140),syn:str(o.syn,160),dup:dupOf(w),inTrash:inTrash(w)});
   }
   return out.slice(0,60);
 }
@@ -1142,7 +1144,7 @@ async function ocrFile(file){
 async function onPhotos(fileList){
   const files=[...fileList].slice(0,10);if(!files.length)return;
   if(!S.sample){BK.err=noSampleMsg();render();return}
-  BK.busy=true;BK.err="";BK.numbered=0;BK.filled=0;BK.last={added:[],skipped:0,book:"내 책"};BK.ctl=new AbortController();
+  BK.busy=true;BK.err="";BK.numbered=0;BK.filled=0;BK.last={added:[],skipped:0,trashed:[],book:"내 책"};BK.ctl=new AbortController();
   const addedSet=new Set();
   try{
   for(let i=0;i<files.length;i++){
@@ -1172,11 +1174,12 @@ async function onPhotos(fileList){
       for(const c of cands){if(!c.dup||!c.no)continue;const ex=S.custom.find(x=>x.w.toLowerCase()===c.w&&!x.no);if(!ex)continue;ex.no=c.no;
         if(S.mode==="remote"){try{await timed(S.db.doc("custom/"+ex.docId).update({no:c.no}),20000);BK.numbered=(BK.numbered||0)+1}catch{}}else{BK.numbered=(BK.numbered||0)+1;saveLocal()}}
       // words already in the list with blank parts (meaning, example, synonyms…): fill only those from this read
-      for(const c of cands){if(!c.dup)continue;const ex=S.custom.find(x=>x.w.toLowerCase()===c.w);if(!ex)continue;
+      for(const c of cands){if(!c.dup)continue;const ex=(c.inTrash?S.trash:S.custom).find(x=>x.w.toLowerCase()===c.w);if(!ex)continue;
         const patch=fillBlanks(ex,c);if(!patch)continue;
         Object.assign(ex,patch);BK.filled=(BK.filled||0)+1;
         if(S.mode==="remote"){try{await timed(S.db.doc("custom/"+ex.docId).update(patch),20000)}catch{}}else saveLocal()}
-      BK.last.skipped+=cands.length-fresh.length;
+      for(const c of cands)if(c.inTrash&&!BK.last.trashed.includes(c.w))BK.last.trashed.push(c.w);
+      BK.last.skipped+=cands.filter(c=>c.dup&&!c.inTrash).length;
       if(!cands.length)BK.err=(files.length>1?(i+1)+"번째 사진: ":"")+"단어를 못 찾았어. 단어가 잘 보이게 다시 찍어줘.";
       if(fresh.length){await addCustom(fresh);fresh.forEach(c=>{addedSet.add(c.w);BK.last.added.push(c.w)})}
     }catch(e){if(e&&e.code==="cancelled")break;BK.err=(BK.err?BK.err+"\n":"")+(files.length>1?(i+1)+"번째 사진: ":"")+errCopy(e);if(e&&e.code==="timeout")continue;if(e&&["not_granted","sampling_disabled","rate_limited","session_expired"].includes(e.code))break}
@@ -1279,6 +1282,26 @@ async function confirmChk(c){
   if(S.mode==="local"){setCustomAll(S.customAll.map(x=>x.id===c.id?{...x,chk:true}:x));saveLocal();render();return}
   try{await timed(S.db.doc("custom/"+c.docId).update({chk:true}),20000);toast("'"+c.w+"'을(를) 확인했어")}catch{toast("저장하지 못했어")}
 }
+/* the same word added twice (old imports, or re-read while the first was in the trash):
+   keep the card with the most study (reviews, then box, then the older one), move the rest to the trash */
+function dupGroups(){
+  const P=(S.ctxs.ina.prog||{}).w||{},m=new Map();
+  for(const c of S.custom){const k=c.w.toLowerCase();if(!m.has(k))m.set(k,[]);m.get(k).push(c)}
+  const score=c=>{const r=P[c.id]||{};return [r.s||0,r.b||0,-(c.at||0)]};
+  return [...m.values()].filter(g=>g.length>1).map(g=>{const s=g.slice().sort((a,b)=>{const x=score(a),y=score(b);for(let i=0;i<3;i++)if(x[i]!==y[i])return y[i]-x[i];return 0});
+    return {keep:s[0],drop:s.slice(1),seen:c=>{const r=P[c.id]||{};return "복습 "+(r.s||0)+"번·단계 "+(r.b||0)}}});
+}
+async function mergeDups(groups){
+  BK.merging=true;render();let fail=0;
+  for(const g of groups){
+    for(const d of g.drop){const patch=fillBlanks(g.keep,d); // nothing the dropped card had is lost
+      if(patch){if(S.mode==="local")setCustomAll(S.customAll.map(x=>x.id===g.keep.id?{...x,...patch}:x));
+        else try{await timed(S.db.doc("custom/"+g.keep.docId).update(patch),20000);Object.assign(g.keep,patch)}catch{fail++}}
+      if(!await setDeleted(d,true))fail++}
+  }
+  if(S.mode==="local")saveLocal();
+  BK.merging=false;BK.dupConfirm=false;render();toast(fail?fail+"개는 정리하지 못했어":"같은 단어 "+groups.length+"개를 하나로 정리했어. 남은 건 휴지통에 있어")
+}
 /* a re-read of the same page fills only the blank parts; checked or hand-fixed words are left alone */
 function fillBlanks(old,c){
   if(old.chk)return null;
@@ -1355,11 +1378,14 @@ function viewBook(){
     el("div",{class:"rowline",style:"justify-content:flex-start;gap:10px"},el("div",{class:"spin"}),el("span",null,BK.prog&&BK.prog.n>1?"사진 "+BK.prog.i+"/"+BK.prog.n+" · ":"",el("span",{id:"bkStage"},BK.stage||"준비 중"))),
     el("span",{class:"small muted"},"사진 한 장에 1분쯤 걸려. 화면 끄거나 다른 앱으로 넘어가지 말고 조금만 기다려줘."),
     el("button",{class:"btn block",onclick:()=>BK.ctl&&BK.ctl.abort()},"그만하기"));
-  else if(BK.last&&(BK.last.added.length||BK.last.skipped)){
+  else if(BK.last&&(BK.last.added.length||BK.last.skipped||(BK.last.trashed||[]).length)){
+    const tr=BK.last.trashed||[];
     const set=new Set(BK.last.added);const rows=S.custom.filter(c=>set.has(c.w)&&(c.book||"내 책")===BK.last.book);
     status=el("section",{class:"panel"},
       el("div",{class:"rowline"},el("h2",null,BK.last.added.length?"새 단어 "+BK.last.added.length+"개 넣었어":"새로 넣을 단어가 없어"),el("button",{class:"reshuffle",onclick:()=>{BK.last=null;render()}},"닫기")),
       BK.last.skipped?el("span",{class:"small muted"},"이미 단어장에 있는 "+BK.last.skipped+"개는 건너뛰었어."):null,
+      tr.length?el("div",{class:"chkbox"},el("b",null,"휴지통에 있는 단어 "+tr.length+"개는 다시 넣지 않았어"),el("p",{style:"margin:4px 0 8px"},tr.join(", ")+" · 다시 공부하려면 휴지통에서 되돌려줘."),
+        el("button",{class:"btn",style:"padding:6px 12px;font-size:13px",onclick:()=>{S.trashSheet=true;render()}},"휴지통 열기")):null,
       BK.numbered?el("span",{class:"small muted"},"이미 있던 단어 "+BK.numbered+"개에 책 번호를 붙였어."):null,
       BK.filled?el("span",{class:"small muted"},"빈 칸이 있던 단어 "+BK.filled+"개의 빈 칸을 채웠어."):null,
       rows.length?el("ul",{class:"booklist"},rows.slice(0,3).map(wordRow)):BK.last.added.length?el("span",{class:"small muted"},"단어장에 반영하는 중…"):null,
@@ -1375,7 +1401,17 @@ function viewBook(){
       el("div",{class:"bookhead"},el("h3",null,"검색 결과"),el("span",{class:"num small muted"},hits.length+"개")),
       hits.length?scrollList("search",hits):el("p",{class:"muted small",style:"margin:0"},"'"+BK.q.trim()+"'에 맞는 단어가 없어."))})():
     S.custom.length?(()=>{const flagged=S.custom.filter(c=>checkIssues(c).length);if(!flagged.length)BK.onlyChk=false;
+      const dups=dupGroups();if(!dups.length)BK.dupConfirm=false;
       return el("section",{class:"panel"},
+      dups.length?el("div",{class:"chkbox"},
+        el("b",null,"같은 단어가 두 번 들어간 게 "+dups.length+"개 있어"),
+        BK.dupConfirm?[
+          el("ul",null,dups.map(g=>el("li",null,el("span",{lang:"en"},g.keep.w)," · "+g.seen(g.keep)+" 카드를 남기고, "+g.drop.map(d=>g.seen(d)+" 카드").join(", ")+"는 휴지통으로"))),
+          el("p",{class:"small",style:"margin:6px 0 8px"},"휴지통으로 간 카드에만 있던 뜻·예문은 남는 카드의 빈 칸에 옮겨. 휴지통에서 되돌리면 그 카드의 학습 기록도 돌아와."),
+          el("div",{class:"chkbtns"},el("button",{class:"btn",onclick:()=>{BK.dupConfirm=false;render()}},"취소"),
+            el("button",{class:"btn primary",disabled:!!BK.merging,onclick:()=>mergeDups(dups)},BK.merging?"정리하는 중…":"하나로 정리하기"))]
+        :[el("p",{class:"small",style:"margin:4px 0 8px",lang:"en"},dups.map(g=>g.keep.w).join(", ")),
+          el("button",{class:"btn",style:"padding:6px 12px;font-size:13px",onclick:()=>{BK.dupConfirm=true;render()}},"어떻게 정리할지 보기")]):null,
       el("div",{class:"bookhead"},el("h3",null,"내가 추가한 단어"),el("span",{class:"bh-right"},el("span",{class:"num small muted"},S.custom.length+"개",(()=>{const s=kstDayStart(ymd());const n=S.custom.filter(c=>(c.at||0)>=s).length;return n?el("b",{class:"newcount"}," · 오늘 +"+n):null})()," · 최근 추가 순"),trashBtn())),
       flagged.length?el("button",{class:"chkfilter"+(BK.onlyChk?" on":""),"aria-pressed":BK.onlyChk?"true":"false",onclick:()=>{BK.onlyChk=!BK.onlyChk;BK.open=null;SC.book=0;render()}},
         BK.onlyChk?"전체 보기":"확인 필요 "+flagged.length+"개만 보기"):null,
