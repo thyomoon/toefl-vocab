@@ -271,7 +271,7 @@ function render(){
   else if(S.role==="supporter")view=S.tab==="book"?viewBook():S.tab==="trend"?viewTrend():S.tab==="mine"?viewHome():S.tab==="mytest"?viewTest():viewSupport();
   else view=S.tab==="test"?viewTest():S.tab==="book"?viewBook():S.tab==="trend"?viewTrend():viewHome();
   app.replaceChildren(view,ready&&S.role!=="claim"&&!(S.role==="learner"&&!S.cfg.onboarded&&S.mode==="remote")?tabbar():"");
-  $("#layer").replaceChildren(S.wordSheet?viewWordSheet():S.trashSheet&&S.tab==="book"?viewTrashSheet():S.sheet?viewSheet():S.wrongSheet&&(S.tab==="test"||S.tab==="mytest")?viewWrongSheet():S.daySheet!=null&&(S.tab==="home"||S.tab==="mine")?viewDaySheet():"");
+  $("#layer").replaceChildren(S.wordSheet?viewWordSheet():S.editWord&&S.tab==="book"?viewEditSheet():S.trashSheet&&S.tab==="book"?viewTrashSheet():S.sheet?viewSheet():S.wrongSheet&&(S.tab==="test"||S.tab==="mytest")?viewWrongSheet():S.daySheet!=null&&(S.tab==="home"||S.tab==="mine")?viewDaySheet():"");
   restore(k);
 }
 
@@ -993,7 +993,7 @@ async function readPage(opts,tail){
   BK.stage="단어와 뜻을 읽는 중";const st1=$("#bkStage");if(st1)st1.textContent=BK.stage;
   let all=null;
   try{all=await ask(DETAIL_PROMPT+"\n이번에는 이 페이지의 표제어 전부를 번호 순서대로 답하세요. 한국어 뜻(\"ko\")은 모든 뜻 줄의 오른쪽 끝에 인쇄돼 있으니 비우지 말고 옮기세요."+tail,opts,240000)}
-  catch(e){if(e&&e.code==="invalid_json")all=salvageArray(e.text);else if(!(e&&(e.code==="timeout"||e.code==="upstream_error")))throw e}
+  catch(e){if(e&&e.code==="invalid_json")all=salvageArray(e.text);else if(isBusy(e)||!(e&&(e.code==="timeout"||e.code==="upstream_error")))throw e}
   if(Array.isArray(all)&&all.length){
     // a long one-shot reply tends to leave the small Korean meanings blank; ask again for just those headwords
     const hasKo=o=>Array.isArray(o&&o.senses)?o.senses.some(x=>x&&String(x.ko||"").trim()):!!String(o&&o.ko||"").trim();
@@ -1023,9 +1023,16 @@ async function readPage(opts,tail){
     out.push(...await one(b));if(BK.ctl&&BK.ctl.signal.aborted)break}
   return out;
 }
+/* Gemini 503/500 = its servers are busy for a moment (not our quota): wait and try again a few times */
+function isBusy(e){return !!e&&e.code==="upstream_error"&&/Gemini (500|503)|high demand|overloaded|UNAVAILABLE/i.test(String(e.text||""))}
+function wait(ms,signal){return new Promise(r=>{const t=setTimeout(r,ms);if(signal)signal.addEventListener("abort",()=>{clearTimeout(t);r()},{once:true})})}
 async function ask(input,opts,ms){const c=new AbortController();const outer=BK.ctl&&BK.ctl.signal;const relay=()=>c.abort();if(outer)outer.addEventListener("abort",relay);let timedOut=false;const t=setTimeout(()=>{timedOut=true;c.abort()},ms);
-  try{return await S.sample.json(input,{...opts,signal:c.signal})}
-  catch(e){if(timedOut)throw Object.assign(new Error("timeout"),{code:"timeout"});throw e}
+  try{for(let k=0;;k++){
+    try{return await S.sample.json(input,{...opts,signal:c.signal})}
+    catch(e){if(!isBusy(e)||k>=3||c.signal.aborted)throw e;
+      const prev=BK.stage;BK.stage="Gemini 서버가 붐벼서 잠시 뒤 다시 시도하는 중 ("+(k+1)+"/3)";const st=$("#bkStage");if(st)st.textContent=BK.stage;
+      await wait([5000,15000,30000][k],c.signal);BK.stage=prev;const st2=$("#bkStage");if(st2)st2.textContent=prev}}}
+  catch(e){if(timedOut)throw Object.assign(new Error("timeout"),{code:"timeout"});if(outer&&outer.aborted)throw Object.assign(new Error("cancelled"),{code:"cancelled"});throw e}
   finally{clearTimeout(t);if(outer)outer.removeEventListener("abort",relay)}}
 function timed(p,ms){let t;return Promise.race([p,new Promise((_,rej)=>{t=setTimeout(()=>rej(Object.assign(new Error("timeout"),{code:"timeout"})),ms)})]).finally(()=>clearTimeout(t))}
 async function fillExamples(cands,signal){
@@ -1078,7 +1085,7 @@ function normCands(arr,also){
   }
   return out.slice(0,60);
 }
-function errCopy(e){const c=e&&e.code;return c==="timeout"?"너무 오래 걸려서 멈췄어. 이 사진만 다시 올려줘.":c==="not_granted"||c==="sampling_disabled"?"사진 읽기 서버에 연결하지 못했어.":c==="rate_limited"?"오늘 사진 읽기 한도를 다 쓴 것 같아. 조금 뒤나 내일 다시 해줘.":c==="images_unavailable"?"사진을 보내지 못했어. 다시 해줘.":c==="image_rejected"?"이 사진은 못 읽겠어. JPG나 PNG 사진으로 해줘.":c==="invalid_json"||c==="empty_completion"?"단어를 정리하지 못했어. 다시 찍어줘.":c==="refused"?"이 사진은 처리할 수 없어. 단어가 잘 보이게 다시 찍어줘.":c==="session_expired"?"다시 로그인하고 해줘.":"사진 읽기에 실패했어. 다시 해줘."+(c==="upstream_error"&&e.text?" ("+String(e.text).slice(0,160)+")":"")}
+function errCopy(e){const c=e&&e.code;return c==="timeout"?"너무 오래 걸려서 멈췄어. 이 사진만 다시 올려줘.":c==="not_granted"||c==="sampling_disabled"?"사진 읽기 서버에 연결하지 못했어.":c==="rate_limited"?"오늘 사진 읽기 한도를 다 쓴 것 같아. 조금 뒤나 내일 다시 해줘.":c==="images_unavailable"?"사진을 보내지 못했어. 다시 해줘.":c==="image_rejected"?"이 사진은 못 읽겠어. JPG나 PNG 사진으로 해줘.":c==="invalid_json"||c==="empty_completion"?"단어를 정리하지 못했어. 다시 찍어줘.":c==="refused"?"이 사진은 처리할 수 없어. 단어가 잘 보이게 다시 찍어줘.":c==="session_expired"?"다시 로그인하고 해줘.":isBusy(e)?"Gemini 서버가 지금 붐벼서 몇 번 다시 해봤는데도 안 됐어. 한도 문제는 아니야. 10~30분 뒤에 다시 올려줘.":"사진 읽기에 실패했어. 다시 해줘."+(c==="upstream_error"&&e.text?" ("+String(e.text).slice(0,160)+")":"")}
 const OCR_PROMPT=`아래 텍스트는 영어 단어책(또는 영어 교재) 한 페이지를 폰에서 글자 인식(OCR)으로 읽은 결과입니다. 인식 오류(깨진 글자, 줄바꿈 섞임, 한글 오타)가 있을 수 있으니 문맥으로 바로잡아 주세요. 한국인 학습자가 토플(목표 밴드 4.5)을 준비하며 이 페이지의 단어를 외우려고 합니다.
 표 형식 페이지 안내: 보통 한 행에 [표제어 | 영어 유의어 목록 | 한국어 뜻]이 있습니다. 표제어는 각 행의 맨 왼쪽 칸에 있고, 같은 행의 한국어 뜻과 짝을 이룹니다. 가운데 칸의 영어 유의어가 길어서 다음 줄로 넘어간 단어(예: incontrovertible, boldness)는 표제어가 아닙니다. "give rise to", "no wonder" 같은 숙어도 표제어면 그대로 포함하세요. 표제어는 책에 인쇄된 형태 그대로 쓰세요. encroachment를 encroach로 바꾸는 것처럼 원형으로 고치지 마세요. 예문에만 나오는 단어는 표제어가 아닙니다.
 번호 규칙: 표제어 옆에 책이 붙인 번호(1, 2, 3…)가 있으면 그 번호를 "n"에 정수로 적으세요. 번호가 붙은 책이면 번호가 붙은 표제어만 넣고, 번호 순서대로 빠진 번호가 없는지 확인하세요. 한 표제어 안의 1. 2. 3. 뜻 번호는 표제어 번호가 아닙니다. 책에 표제어 번호가 아예 없으면 "n"은 null로 하세요.
@@ -1164,9 +1171,9 @@ async function onPhotos(fileList){
       // words already in the list without a book number: just attach the number
       for(const c of cands){if(!c.dup||!c.no)continue;const ex=S.custom.find(x=>x.w.toLowerCase()===c.w&&!x.no);if(!ex)continue;ex.no=c.no;
         if(S.mode==="remote"){try{await timed(S.db.doc("custom/"+ex.docId).update({no:c.no}),20000);BK.numbered=(BK.numbered||0)+1}catch{}}else{BK.numbered=(BK.numbered||0)+1;saveLocal()}}
-      // words already in the list with a blank meaning: fill it from this read
-      for(const c of cands){if(!c.dup||!c.ko)continue;const ex=S.custom.find(x=>x.w.toLowerCase()===c.w&&!String(x.ko||"").trim());if(!ex)continue;
-        const patch={};for(const k of ["ko","pos","syn","fam","ex","exKo","senses","note","ph","stars"])if(c[k]!==undefined&&c[k]!==""&&!(Array.isArray(c[k])&&!c[k].length))patch[k]=c[k];
+      // words already in the list with blank parts (meaning, example, synonyms…): fill only those from this read
+      for(const c of cands){if(!c.dup)continue;const ex=S.custom.find(x=>x.w.toLowerCase()===c.w);if(!ex)continue;
+        const patch=fillBlanks(ex,c);if(!patch)continue;
         Object.assign(ex,patch);BK.filled=(BK.filled||0)+1;
         if(S.mode==="remote"){try{await timed(S.db.doc("custom/"+ex.docId).update(patch),20000)}catch{}}else saveLocal()}
       BK.last.skipped+=cands.length-fresh.length;
@@ -1183,11 +1190,16 @@ function statusOf(id){const r=recOf(id);if(!r)return ["new","새 단어"];if(r.i
 function wordRow(c,tagFn,swipe){
   const [sc,sl]=tagFn?tagFn(c.id):statusOf(c.id);const open=BK.open===c.id;
   const canSwipe=swipe&&c.src!=="awl";const shown=canSwipe&&BK.swiped===c.id;
-  const head=el("button",{class:"bwhead",onclick:e=>{if(head.dataset.dragged){delete head.dataset.dragged;return}if(BK.swiped){BK.swiped=null;render();return}BK.open=open?null:c.id;render()},"aria-expanded":open?"true":"false"},el("span",{class:"w",lang:"en"},c.w),el("span",{class:"ko"},c.ko),el("span",{class:"st "+sc},sl));
+  const issues=c.docId&&S.tab==="book"?checkIssues(c):[];
+  const head=el("button",{class:"bwhead",onclick:e=>{if(head.dataset.dragged){delete head.dataset.dragged;return}if(BK.swiped){BK.swiped=null;render();return}BK.open=open?null:c.id;render()},"aria-expanded":open?"true":"false"},el("span",{class:"w",lang:"en"},c.w),
+    el("span",{class:"ko"},issues.length?el("b",{class:"chk"},"확인 필요"):null,c.ko||(issues.length?"뜻 없음":"")),el("span",{class:"st "+sc},sl));
   if(canSwipe)attachRowSwipe(head,c);
   return el("li",{class:"bw"+(canSwipe?" swipe":"")+(shown?" swiped":"")},
     canSwipe?el("div",{class:"swwrap"},el("button",{class:"swdel","aria-label":c.w+" 휴지통으로",tabindex:shown?"0":"-1",onclick:()=>{BK.swiped=null;BK.open=null;delCustom(c)}},"삭제"),head):head,
-    open?el("div",{class:"detail"},c.senses&&c.senses.length?(c.ph?el("span",{class:"small muted",lang:"en"},"["+c.ph+"]"):null):el("span",{class:"small muted"},c.pos+(c.kb===false?" · 뜻: 보충":" · 뜻: 책")),wordBody(c)):null);
+    open?el("div",{class:"detail"},c.senses&&c.senses.length?(c.ph?el("span",{class:"small muted",lang:"en"},"["+c.ph+"]"):null):el("span",{class:"small muted"},c.pos+(c.kb===false?" · 뜻: 보충":" · 뜻: 책")),issues.length?el("div",{class:"chkbox"},el("b",null,"사진에서 다 못 읽었을 수 있어. 책과 비교해 줘"),el("ul",null,issues.map(x=>el("li",null,x)))):null,
+      wordBody(c),
+      c.docId&&S.tab==="book"?el("div",{class:"chkbtns"},el("button",{class:"btn",onclick:()=>openEdit(c)},"뜻·예문 고치기"),
+        issues.length?el("button",{class:"btn",onclick:()=>confirmChk(c)},"이대로 맞아"):null):null):null);
 }
 function noEditor(c){
   const inp=el("input",{type:"number",inputmode:"numeric",min:"1",max:"1999",value:c.no||"",placeholder:"번호","aria-label":c.w+" 책 번호",class:"noin"});
@@ -1231,9 +1243,10 @@ function viewTrashSheet(){
   const close=()=>{S.trashSheet=false;BK.emptyConfirm=false;render()};const list=S.trash||[];
   return el("div",{class:"scrim",onclick:e=>{if(e.target===e.currentTarget)close()}},el("div",{class:"sheet listsheet",role:"dialog","aria-label":"휴지통"},
     el("div",{class:"rowline"},el("h2",null,"휴지통 "+list.length+"개"),el("button",{class:"iconbtn","aria-label":"닫기",onclick:close},icon("close"))),
-    el("p",{class:"small muted",style:"margin:0"},"실수로 지운 단어는 되돌릴 수 있어. 학습 기록도 같이 돌아와. 완전히 지우려면 단어를 왼쪽으로 밀어 봐."),
+    el("p",{class:"small muted",style:"margin:0"},"실수로 지운 단어는 되돌릴 수 있어. 학습 기록도 같이 돌아와. 뜻을 누르면 고칠 수 있어. 완전히 지우려면 단어를 왼쪽으로 밀어 봐."),
     list.length?el("div",{class:"sheetscroll",onscroll:e=>{SC.trash=e.currentTarget.scrollTop}},el("ul",{class:"booklist"},list.map(c=>{const shown=BK.swiped===c.id;
-      const head=el("div",{class:"trashrow"},el("span",{class:"w",lang:"en"},c.w),el("span",{class:"ko"},c.ko),
+      const head=el("div",{class:"trashrow"},el("span",{class:"w",lang:"en"},c.w),
+        el("button",{class:"ko trashedit","aria-label":c.w+" 고치기",onclick:()=>{if(head.dataset.dragged){delete head.dataset.dragged;return}openEdit(c)}},c.ko||"뜻 없음 · 눌러서 고치기"),
         el("button",{class:"btn primary",style:"padding:6px 10px;font-size:13px",onclick:()=>{if(head.dataset.dragged){delete head.dataset.dragged;return}restoreCustom(c)}},"되돌리기"));
       attachRowSwipe(head,c);
       return el("li",{class:"bw swipe"+(shown?" swiped":"")},el("div",{class:"swwrap"},el("button",{class:"swdel","aria-label":c.w+" 완전히 삭제",tabindex:shown?"0":"-1",onclick:()=>{BK.swiped=null;purgeCustom(c)}},"완전 삭제"),head))})))
@@ -1243,6 +1256,89 @@ function viewTrashSheet(){
         el("div",{style:"display:flex;gap:8px"},el("button",{class:"btn block",onclick:()=>{BK.emptyConfirm=false;render()}},"취소"),
           el("button",{class:"btn danger block",disabled:!!BK.emptying,onclick:()=>emptyTrash(list)},BK.emptying?"비우는 중…":"비우기")))
       :el("button",{class:"btn danger block withicon",onclick:()=>{BK.emptyConfirm=true;render()}},icon("trash"),"휴지통 비우기")):null));
+}
+/* edit a book word by hand: fixes meanings the photo reading missed or got wrong */
+const ED={id:null,n:1,err:"",busy:false};
+function editOf(){return (S.customAll||[]).find(c=>c.id===ED.id)}
+function openEdit(c){ED.id=c.id;ED.n=Math.max(1,Array.isArray(c.senses)&&c.senses.length?c.senses.length:1);ED.err="";ED.busy=false;S.editWord=true;render()}
+function closeEdit(){ED.id=null;S.editWord=false;render()}
+function editSenses(c){return Array.isArray(c.senses)&&c.senses.length?c.senses:[{pos:c.pos||"",syn:String(c.syn||"").split(/,\s*/).filter(Boolean),key:[],ko:c.ko||"",ex:c.ex||"",exKo:c.exKo||""}]}
+/* what the photo reading left blank or half-read; chk = someone checked it against the book */
+function checkIssues(c){
+  if(!c||c.chk)return [];const out=[];const ss=editSenses(c);const multi=ss.length>1;
+  ss.forEach((s,i)=>{const p=multi?(i+1)+"번 뜻 ":"";const ex=String(s.ex||"").trim();
+    const syn=Array.isArray(s.syn)?s.syn.filter(x=>String(x).trim()):String(s.syn||"").split(/[,;]/).filter(x=>x.trim());
+    if(!String(s.ko||"").trim())out.push(p+"한국어 뜻 없음");
+    if(!ex)out.push(p+"예문 없음");else{if(!/\[.+?\]/.test(ex))out.push(p+"예문에 단어 표시 없음");if(!String(s.exKo||"").trim())out.push(p+"예문 번역 없음")}
+    if(!syn.length)out.push(p+"유의어 없음")});
+  if(c.kb===false)out.push("뜻을 책에서 못 읽어 보충함");
+  if(/판독|인식 상태/.test(c.note||""))out.push("참고 일부만 읽음");
+  return out;
+}
+async function confirmChk(c){
+  if(S.mode==="local"){setCustomAll(S.customAll.map(x=>x.id===c.id?{...x,chk:true}:x));saveLocal();render();return}
+  try{await timed(S.db.doc("custom/"+c.docId).update({chk:true}),20000);toast("'"+c.w+"'을(를) 확인했어")}catch{toast("저장하지 못했어")}
+}
+/* a re-read of the same page fills only the blank parts; checked or hand-fixed words are left alone */
+function fillBlanks(old,c){
+  if(old.chk)return null;
+  const blank=v=>v==null||(Array.isArray(v)?!v.length:!String(v).trim());
+  const os=editSenses(old),ns=editSenses(c);
+  const merged=os.map((s,i)=>{const n=ns[i];if(!n)return s;const o={...s};
+    for(const k of ["pos","ko","ex","exKo"])if(blank(o[k])&&!blank(n[k]))o[k]=n[k];
+    if(blank(o.syn)&&!blank(n.syn)){o.syn=n.syn;o.key=n.key||[]}return o});
+  for(let i=os.length;i<ns.length&&i<4;i++)merged.push(ns[i]);
+  const patch={};
+  if(JSON.stringify(merged)!==JSON.stringify(os)){
+    const d={ko:merged.map(s=>s.ko).filter(Boolean).join("; ").slice(0,160),syn:[...new Set(merged.flatMap(s=>s.syn||[]))].join(", ").slice(0,300),pos:merged[0].pos,ex:merged[0].ex,exKo:merged[0].exKo};
+    for(const k in d)if(d[k]!==old[k])patch[k]=d[k];
+    if(Array.isArray(old.senses)&&old.senses.length||merged.length>1)patch.senses=merged}
+  for(const k of ["fam","note","ph"])if(blank(old[k])&&!blank(c[k]))patch[k]=c[k];
+  if(!old.stars&&c.stars)patch.stars=c.stars;
+  return Object.keys(patch).length?patch:null;
+}
+function edField(id,label,value,opts){const o=opts||{};return el("div",{class:"field"},el("label",{for:id},label),
+  o.area?el("textarea",{id,rows:"2",value:value||"",placeholder:o.ph||null,lang:o.en?"en":null}):el("input",{id,value:value||"",placeholder:o.ph||null,autocomplete:"off",autocapitalize:o.en?"off":null,spellcheck:"false",lang:o.en?"en":null}))}
+function viewEditSheet(){
+  const c=editOf();if(!c)return "";const ss=editSenses(c);const multi=ED.n>1;
+  const v=id=>{const i=document.getElementById(id);return i?i.value.trim():""};
+  const senseBox=i=>{const s=ss[i]||{pos:"",syn:[],ko:"",ex:"",exKo:""};const p="ed_s"+i+"_";
+    return el("div",{class:"edsense"},multi?el("div",{class:"rowline"},el("b",{class:"small"},"뜻 "+(i+1)),
+        i===ED.n-1&&i>0?el("button",{class:"reshuffle",onclick:()=>{ED.n--;render()}},"이 뜻 빼기"):null):null,
+      el("div",{class:"edgrid"},edField(p+"ko","한국어 뜻",s.ko,{ph:"예: 반대로"}),edField(p+"pos","품사",s.pos,{ph:"adj.",en:true})),
+      edField(p+"syn","유의어 (쉼표로 구분)",(s.syn||[]).join(", "),{en:true}),
+      edField(p+"ex","예문 (단어를 [대괄호]로 감싸면 강조돼)",s.ex,{area:true,en:true}),
+      edField(p+"exKo","예문 번역",s.exKo,{area:true}))};
+  const save=async()=>{
+    const w=v("ed_w").toLowerCase().replace(/\s+/g," ").slice(0,40);
+    if(!w||!/[a-z]/.test(w)){ED.err="영어 단어를 적어줘.";render();return}
+    if((S.customAll||[]).some(x=>x.id!==c.id&&!x.deleted&&x.w.toLowerCase()===w)){ED.err="'"+w+"'은(는) 이미 단어장에 있어.";render();return}
+    const old=editSenses(c);
+    const senses=[];for(let i=0;i<ED.n;i++){const p="ed_s"+i+"_";const syn=v(p+"syn").split(/[,;]/).map(x=>x.trim()).filter(Boolean).slice(0,10).map(x=>x.slice(0,40));
+      const keyL=((old[i]&&old[i].key)||[]).map(x=>x.toLowerCase());
+      senses.push({pos:v(p+"pos").slice(0,14),syn,key:syn.filter(x=>keyL.includes(x.toLowerCase())),ko:v(p+"ko").slice(0,80),ex:v(p+"ex").slice(0,300),exKo:v(p+"exKo").slice(0,300)})}
+    const kept=senses.filter(s=>s.ko||s.syn.length||s.ex);
+    if(!kept.some(s=>s.ko)){ED.err="한국어 뜻을 적어줘.";render();return}
+    const ko=kept.map(s=>s.ko).filter(Boolean).join("; ").slice(0,160);
+    const patch={w,ko,pos:kept[0].pos,syn:[...new Set(kept.flatMap(s=>s.syn))].join(", ").slice(0,300),ex:kept[0].ex,exKo:kept[0].exKo,fam:v("ed_fam").slice(0,140)};
+    if(Array.isArray(c.senses)&&c.senses.length||kept.length>1){patch.senses=kept;patch.note=v("ed_note").slice(0,600)}
+    if(ko!==String(c.ko||"").trim())patch.kb=true; // a meaning typed from the book is the book's meaning
+    patch.chk=true; // fixed by hand: no longer needs checking
+    if(S.mode==="local"){setCustomAll(S.customAll.map(x=>x.id===c.id?{...x,...patch}:x));saveLocal();toast("'"+w+"'을(를) 고쳤어");closeEdit();return}
+    ED.busy=true;ED.err="";render();
+    try{await timed(S.db.doc("custom/"+c.docId).update(patch),20000);toast("'"+w+"'을(를) 고쳤어");closeEdit()}
+    catch(e){ED.busy=false;ED.err="저장하지 못했어. 인터넷 연결을 확인해줘.";render()}};
+  return el("div",{class:"scrim",onclick:e=>{if(e.target===e.currentTarget)closeEdit()}},el("div",{class:"sheet",role:"dialog","aria-label":c.w+" 고치기"},
+    el("div",{class:"rowline"},el("h2",null,"단어 고치기"),el("button",{class:"iconbtn","aria-label":"닫기",onclick:closeEdit},icon("close"))),
+    c.deleted?el("p",{class:"small muted",style:"margin:0"},"휴지통에 있는 단어야. 고친 뒤 휴지통에서 「되돌리기」를 누르면 단어장에 다시 들어가."):null,
+    edField("ed_w","영어 단어",c.w,{en:true}),
+    Array.from({length:ED.n},(_,i)=>senseBox(i)),
+    ED.n<4?el("button",{class:"btn block",onclick:()=>{ED.n++;render()}},"뜻 하나 더 넣기"):null,
+    edField("ed_fam","단어 가족 (파생어)",c.fam,{en:true,ph:"예: n. conversion"}),
+    Array.isArray(c.senses)&&c.senses.length||multi?edField("ed_note","참고 (최신출제 포인트)",c.note,{area:true}):null,
+    ED.err?el("p",{class:"note",style:"color:var(--bad);border-color:var(--bad);margin:0",role:"alert"},ED.err):null,
+    el("div",{style:"display:flex;gap:8px"},el("button",{class:"btn block",onclick:closeEdit},"취소"),
+      el("button",{class:"btn primary block",disabled:ED.busy,onclick:save},ED.busy?"저장하는 중…":"저장"))));
 }
 async function emptyTrash(list){
   BK.emptying=true;render();
@@ -1265,7 +1361,7 @@ function viewBook(){
       el("div",{class:"rowline"},el("h2",null,BK.last.added.length?"새 단어 "+BK.last.added.length+"개 넣었어":"새로 넣을 단어가 없어"),el("button",{class:"reshuffle",onclick:()=>{BK.last=null;render()}},"닫기")),
       BK.last.skipped?el("span",{class:"small muted"},"이미 단어장에 있는 "+BK.last.skipped+"개는 건너뛰었어."):null,
       BK.numbered?el("span",{class:"small muted"},"이미 있던 단어 "+BK.numbered+"개에 책 번호를 붙였어."):null,
-      BK.filled?el("span",{class:"small muted"},"뜻이 비어 있던 단어 "+BK.filled+"개에 뜻을 채웠어."):null,
+      BK.filled?el("span",{class:"small muted"},"빈 칸이 있던 단어 "+BK.filled+"개의 빈 칸을 채웠어."):null,
       rows.length?el("ul",{class:"booklist"},rows.slice(0,3).map(wordRow)):BK.last.added.length?el("span",{class:"small muted"},"단어장에 반영하는 중…"):null,
       rows.length>3?el("span",{class:"small muted"},"외 "+(rows.length-3)+"개는 아래 목록 첫 페이지에 있어."):null);
   }
@@ -1278,10 +1374,13 @@ function viewBook(){
     el("div",{id:"bkResults",style:"display:contents"},BK.q.trim()?(()=>{const hits=searchHits(BK.q);return el("section",{class:"panel","aria-label":"검색 결과"},
       el("div",{class:"bookhead"},el("h3",null,"검색 결과"),el("span",{class:"num small muted"},hits.length+"개")),
       hits.length?scrollList("search",hits):el("p",{class:"muted small",style:"margin:0"},"'"+BK.q.trim()+"'에 맞는 단어가 없어."))})():
-    S.custom.length?el("section",{class:"panel"},
+    S.custom.length?(()=>{const flagged=S.custom.filter(c=>checkIssues(c).length);if(!flagged.length)BK.onlyChk=false;
+      return el("section",{class:"panel"},
       el("div",{class:"bookhead"},el("h3",null,"내가 추가한 단어"),el("span",{class:"bh-right"},el("span",{class:"num small muted"},S.custom.length+"개",(()=>{const s=kstDayStart(ymd());const n=S.custom.filter(c=>(c.at||0)>=s).length;return n?el("b",{class:"newcount"}," · 오늘 +"+n):null})()," · 최근 추가 순"),trashBtn())),
-      scrollList("book",newestFirst(S.custom),null,true),
-      el("p",{class:"small muted",style:"margin:0"},"단어를 왼쪽으로 밀면 삭제 버튼이 나와."))
+      flagged.length?el("button",{class:"chkfilter"+(BK.onlyChk?" on":""),"aria-pressed":BK.onlyChk?"true":"false",onclick:()=>{BK.onlyChk=!BK.onlyChk;BK.open=null;SC.book=0;render()}},
+        BK.onlyChk?"전체 보기":"확인 필요 "+flagged.length+"개만 보기"):null,
+      scrollList("book",newestFirst(BK.onlyChk?flagged:S.custom),null,true),
+      el("p",{class:"small muted",style:"margin:0"},"단어를 왼쪽으로 밀면 삭제 버튼이 나와."))})()
     :el("section",{class:"panel"},el("div",{class:"bookhead"},el("h2",null,"아직 책 단어가 없어"),trashBtn()),el("p",{class:"muted small",style:"margin:0"},"책 페이지를 찍으면 단어가 책 이름별로 여기에 모여. 추가한 단어는 매일 카드에 새 단어로 먼저 나와."))));
 }
 

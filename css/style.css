@@ -396,3 +396,17 @@ i.lgdark{background:linear-gradient(90deg,var(--ink) 50%,color-mix(in srgb,var(-
 
 /* sign-in and word-book picker shown before the app (js/runtime.js) */
 .gate{position:fixed;inset:0;z-index:50;background:var(--bg);overflow:auto}
+/* word edit sheet */
+.edsense{display:flex;flex-direction:column;gap:10px;padding-top:12px;border-top:1px solid var(--line)}
+.edgrid{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:8px}
+.field textarea{resize:vertical;min-height:52px}
+.trashedit{text-align:left;padding:4px 0;text-decoration:underline dotted;text-underline-offset:3px}
+/* words the photo reading may have missed */
+.chk{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;margin-right:6px;border-radius:999px;background:var(--mid-soft);color:var(--mid);vertical-align:1px}
+.chkbox{padding:10px 12px;border-radius:12px;background:var(--mid-soft);color:var(--ink);font-size:13px}
+.chkbox b{color:var(--mid)}
+.chkbox ul{margin:6px 0 0;padding-left:18px}
+.chkbtns{display:flex;gap:8px;flex-wrap:wrap}
+.chkbtns .btn{padding:7px 14px;font-size:13px}
+.chkfilter{align-self:flex-start;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid var(--mid);color:var(--mid);background:var(--surface)}
+.chkfilter.on{background:var(--mid);color:var(--surface)}
