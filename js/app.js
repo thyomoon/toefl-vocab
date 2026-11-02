@@ -1410,7 +1410,7 @@ function viewBook(){
       rows.length>3?el("span",{class:"small muted"},"외 "+(rows.length-3)+"개는 아래 목록 첫 페이지에 있어."):null);
   }
   return el("main",{class:"wrap"},header(learner?"책 단어":"책 단어 추가하기"),fileIn,
-    el("button",{class:"photo",disabled:BK.busy,onclick:()=>{if(!S.sample){BK.err=noSampleMsg();render();return}$("#photoIn").click()}},icon("camera"),el("span",null,el("b",null,"책 페이지 찍기"),el("span",null,"찍거나 앨범에서 여러 장 골라도 돼. 단어랑 책의 뜻을 읽고, 예문·파생어·유의어까지 채워서 바로 단어장에 넣어줄게"))),
+    el("button",{class:"photo",disabled:BK.busy,onclick:()=>{if(!S.sample){BK.err=noSampleMsg();render();return}$("#photoIn").click()}},icon("camera"),el("b",null,"책 페이지 찍기")),
     !S.sample&&S.mode!=="init"&&!BK.err?el("p",{class:"note"},noSampleMsg()):null,
     BK.err?el("p",{class:"note",style:"color:var(--bad);border-color:var(--bad)",role:"alert"},BK.err):null,
     status,
