@@ -268,9 +268,10 @@ function render(){
   let view;const ready=S.mode==="local"||(S.mode==="remote"&&S.got.cfg&&S.got.prog);
   if(!ready)view=el("div",{class:"wrap"},el("div",{class:"center"},el("div",{class:"rowline",style:"justify-content:flex-start;gap:10px"},el("div",{class:"spin"}),el("span",{class:"muted"},"단어장 여는 중…"))));
   else if(S.role==="claim"||(S.role==="learner"&&!S.cfg.onboarded&&S.mode==="remote"))view=viewOnboarding();
+  else if(S.guide)view=viewGuide();
   else if(S.role==="supporter")view=S.tab==="book"?viewBook():S.tab==="trend"?viewTrend():S.tab==="mine"?viewHome():S.tab==="mytest"?viewTest():viewSupport();
   else view=S.tab==="test"?viewTest():S.tab==="book"?viewBook():S.tab==="trend"?viewTrend():viewHome();
-  app.replaceChildren(view,ready&&S.role!=="claim"&&!(S.role==="learner"&&!S.cfg.onboarded&&S.mode==="remote")?tabbar():"");
+  app.replaceChildren(view,ready&&!S.guide&&S.role!=="claim"&&!(S.role==="learner"&&!S.cfg.onboarded&&S.mode==="remote")?tabbar():"");
   $("#layer").replaceChildren(S.wordSheet?viewWordSheet():S.editWord&&S.tab==="book"?viewEditSheet():S.trashSheet&&S.tab==="book"?viewTrashSheet():S.sheet?viewSheet():S.wrongSheet&&(S.tab==="test"||S.tab==="mytest")?viewWrongSheet():S.daySheet!=null&&(S.tab==="home"||S.tab==="mine")?viewDaySheet():"");
   restore(k);
 }
@@ -395,13 +396,30 @@ async function claim(){
   if(prev&&prev!==S.me){try{const q=await S.db.collection("cheers").get();for(const d of q.docs)await S.db.doc("cheers/"+d.id).delete();S.cheers=[]}catch(e){}}
   OB.step=2;decideRole();S.tab="home";render();
 }
-/* ============ onboarding: 1 welcome → 2 exam date → 3 first book photos */
+/* ============ onboarding: 1 welcome → 2 exam date → 3 first book photos → 4 how to read the record → 5 home screen */
 const OB={step:1};
 function obFrame(step,body){
   return el("main",{class:"wrap onb"},
     step>1&&S.isOwner?el("button",{class:"reshuffle",style:"align-self:flex-end",onclick:()=>{PREF.asSupport=true;savePref();decideRole();S.tab="home";render()}},"응원 화면 보기"):null,
-    el("div",{class:"obsteps","aria-label":"단계 "+step+" / 4"},[1,2,3,4].map(i=>el("i",{class:i<=step?"on":""}))),
+    el("div",{class:"obsteps","aria-label":"단계 "+step+" / 5"},[1,2,3,4,5].map(i=>el("i",{class:i<=step?"on":""}))),
     body);
+}
+/* how to read the record tab: onboarding step 4, and again from settings → 튜토리얼 다시 보기 */
+function guideBody(){
+  const item=(t,d,extra)=>el("li",null,el("b",null,t),el("p",null,d),extra||null);
+  return [el("h1",{class:"hero"},"기록은 ",el("span",{class:"hl"},"이렇게")," 봐"),
+    el("p",{class:"muted",style:"margin:0"},"기록 탭에 공부한 게 쌓여. 이 설명은 설정 → 튜토리얼 다시 보기에서 언제든 다시 볼 수 있어."),
+    el("ul",{class:"guide"},
+      item("지난주와 비교","최근 7일과 그 전 7일을 나란히 놓고, 공부한 날 · 새 단어 · '알았음' 비율 · 테스트 정답률이 늘었는지 줄었는지 보여줘."),
+      item("단어 상태","한 번이라도 본 단어가 네 칸으로 나뉘어. 줄을 누르면 그 칸의 단어가 펼쳐져.",
+        el("ul",{class:"gcats"},CATS.map(([k,l,cls])=>el("li",null,el("i",{class:cls}),el("div",null,el("b",null,l),el("span",null,CATHELP[k])))))),
+      item("2주 학습량","하루에 본 새 단어와 복습 단어 수야. 진한 부분은 '알았음'을 누른 카드. 막대를 누르면 그날 숫자가 아래에 나와."),
+      item("카드 응답 비율","카드에서 알았음 · 애매 · 몰랐음을 누른 비율이야."),
+      item("테스트 정답률","테스트에서 맞힌 비율이야. 하루에 여러 번 본 날은 전부 합쳐서 계산해."))];
+}
+function viewGuide(){
+  return el("main",{class:"wrap onb"},el("div",{class:"center"},...guideBody(),
+    el("button",{class:"btn primary block",style:"padding:16px;font-size:17px",onclick:()=>{S.guide=false;window.scrollTo(0,0);render()}},"알겠어")));
 }
 function finishOnboarding(){BK.last=null;BK.err="";OB.step=1;saveCfg({onboarded:true});S.tab="home";window.scrollTo(0,0)}
 function viewOnboarding(){
@@ -420,7 +438,9 @@ function viewOnboarding(){
       el("div",{class:"obdday"},el("b",{class:"num"},left>0?"D-"+left:left===0?"D-DAY":"날짜를 확인해줘"),el("span",null,fmtExam(S.cfg.exam)+"까지 · 하루 새 단어 "+S.cfg.daily+"개")),
       el("div",{class:"field"},el("label",{for:"obDaily"},"하루에 몇 개씩 외울까?"),el("select",{id:"obDaily",onchange:e=>saveCfg({daily:Number(e.target.value)})},[10,20,30,50].map(v=>{const o=el("option",{value:String(v)},v+"개");if(Number(S.cfg.daily)===v)o.selected=true;return o})),el("span",{class:"small muted"},"더 많이 외우고 싶으면 나한테 말해줘. 추가해줄게!")),
       el("button",{class:"btn primary block",style:"padding:16px;font-size:17px",disabled:left<0,onclick:()=>{OB.step=3;window.scrollTo(0,0);render()}},"다음")));}
-  if(step===4)return viewObInstall();
+  if(step===4)return obFrame(4,el("div",{class:"center"},...guideBody(),
+    el("button",{class:"btn primary block",style:"padding:16px;font-size:17px",onclick:()=>{OB.step=5;window.scrollTo(0,0);render()}},"다음")));
+  if(step===5)return viewObInstall();
   const added=BK.last?BK.last.added.length:0;
   return obFrame(3,el("div",{class:"center"},
     el("h1",{class:"hero"},"공부할 ",el("span",{class:"hl"},"단어책"),", 찍어줄래?"),
@@ -442,7 +462,7 @@ const PLUS_SVG='<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-lin
 function viewObInstall(){
   const standalone=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;
   const step=(n,body,ic)=>el("li",null,el("span",{class:"obn"},String(n)),el("div",null,body),ic?el("span",{class:"obic",svg:ic}):null);
-  return obFrame(4,el("div",{class:"center"},
+  return obFrame(5,el("div",{class:"center"},
     catArt("small"),
     el("h1",{class:"hero"},"홈 화면에 ",el("span",{class:"hl"},"앱처럼")," 놓아줘"),
     el("p",{class:"muted",style:"margin:0"},"홈 화면에 추가해두면 바로 열 수 있어. 훨씬 편할 거야."),
@@ -480,6 +500,9 @@ function viewSheet(){
       S.mode==="remote"&&S.isOwner?[el("input",{type:"file",accept:".json,application/json",id:"importIn",hidden:true,onchange:e=>{const f=e.target.files&&e.target.files[0];e.target.value="";if(f)importBackup(f)}}),
         el("button",{class:"btn block",disabled:BKP.busy,onclick:()=>$("#importIn").click()},"백업 파일에서 가져오기")]:null,
       el("span",{class:"small muted"},BKP.msg||"외운 기록, 책 단어, 응원 메시지를 파일 하나로 저장해. 가끔 한 번씩 받아두면 안심이야.")),
+    el("div",{class:"field"},el("label",null,"도움말"),
+      el("button",{class:"btn block",onclick:()=>{S.sheet=false;S.guide=true;window.scrollTo(0,0);render()}},"튜토리얼 다시 보기"),
+      el("span",{class:"small muted"},"기록 탭의 단어 상태 · 그래프 보는 법")),
     el("p",{class:"small muted",style:"margin:0"},"단어장: 책 사진으로 넣은 Hackers TOEFL Vocabulary 단어. 뜻·유의어·예문·번역은 책 그대로야.")));
 }
 
@@ -684,10 +707,6 @@ const CATHELP={
  familiar:"'알았음'을 2~3번 연속으로 누른 단어야. 3일, 7일 뒤에 다시 나와. 한두 번 더 맞히면 '완벽히 외움'으로 올라가.",
  fresh:"처음 본 단어, '알았음'을 1번 누른 단어, 아니면 '몰랐음'을 눌러서 처음부터 다시 시작하는 단어야. 다음 날 다시 나와.",
  skip:"새 단어 카드에서 '이미 아는 단어야'를 눌러서 뺀 단어야. 60일 뒤에 카드랑 테스트에 다시 나오고, 그때 카드에서 누른 결과에 따라 다른 상태로 옮겨가."};
-/* tooltip: shows on hover or tap, disappears after 5 seconds */
-let tipTimer=null;
-function hideTip(line){const t=line&&line.querySelector(".tipbox");if(t)t.classList.remove("show")}
-function showTip(line){if(!line.isConnected){setTimeout(()=>{const t=document.getElementById(line.querySelector(".tipbox").id);if(t)showTip(t.parentNode)},0);return}document.querySelectorAll(".tipbox.show").forEach(t=>t.classList.remove("show"));const t=line.querySelector(".tipbox");if(!t)return;t.classList.add("show");clearTimeout(tipTimer);tipTimer=setTimeout(()=>t.classList.remove("show"),5000)}
 const CATS=[["mastered","완벽히 외움","lv3"],["familiar","익숙해지는 중","lv2"],["fresh","막 배운 단어","lv1"],["skip","이미 알던 단어","lvk"]];
 function catOf(r){if(!r)return "unseen";if(r.i==="skip")return "skip";if(r.b>=4)return "mastered";if(r.b>=2)return "familiar";return "fresh"}
 function viewTrend(){
@@ -705,9 +724,8 @@ function viewTrend(){
       el("div",{class:"rowline"},el("h2",null,"단어 상태"),el("span",{class:"num small muted"},"본 단어 "+total+"개")),
       el("div",{class:"stackbar",role:"img","aria-label":CATS.map(c=>c[1]+" "+groups[c[0]].length+"개").join(", ")},CATS.filter(c=>groups[c[0]].length).map(c=>el("i",{class:c[2],style:"flex:"+groups[c[0]].length}))),
       el("ul",{class:"lglist"},CATS.map(([k,l,cls])=>{const n=groups[k].length;const open=TR.cat===k;
-        return el("li",{class:"catrow"},el("div",{class:"catline",onmouseenter:e=>showTip(e.currentTarget),onmouseleave:e=>hideTip(e.currentTarget)},
-            el("button",{class:"cat"+(open?" open":"")+(n?"":" empty"),"aria-expanded":n?(open?"true":"false"):null,"aria-describedby":"help-"+k,onclick:()=>{if(n){TR.cat=open?null:k;BK.open=null;render()}const line=document.getElementById("help-"+k);if(line)showTip(line.parentNode)}},el("i",{class:cls}),el("span",null,l),el("b",{class:"num"},n+"개"),el("span",{class:"chev","aria-hidden":"true"},n?(open?"▴":"▾"):"")),
-            el("span",{class:"tipbox",role:"tooltip",id:"help-"+k},CATHELP[k])),
+        return el("li",{class:"catrow"},el("div",{class:"catline"},
+            el("button",{class:"cat"+(open?" open":"")+(n?"":" empty"),"aria-expanded":n?(open?"true":"false"):null,onclick:()=>{if(n){TR.cat=open?null:k;BK.open=null;render()}}},el("i",{class:cls}),el("span",null,l),el("b",{class:"num"},n+"개"),el("span",{class:"chev","aria-hidden":"true"},n?(open?"▴":"▾"):""))),
           open?el("div",{class:"catlist"},scrollList("cat:"+k,groups[k])):null)}))),
     el("section",{class:"panel","aria-label":"학습량"},
       el("h2",null,"2주 학습량"),

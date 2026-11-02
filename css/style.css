@@ -329,9 +329,6 @@ i.lgdark{background:linear-gradient(90deg,var(--ink) 50%,color-mix(in srgb,var(-
 .catline{position:relative;display:flex;align-items:center;gap:6px}
 .catline .cat{flex:1}
 .info{flex:none;width:20px;height:20px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font-size:12px;font-weight:700;font-style:italic;font-family:var(--f-word);color:var(--muted);cursor:help;background:var(--surface)}
-.tipbox{display:none;position:absolute;left:14px;right:0;bottom:calc(100% + 8px);z-index:4;background:var(--ink);color:var(--bg);font-size:13px;line-height:1.5;padding:9px 12px;border-radius:10px;box-shadow:var(--shadow);pointer-events:none}
-.tipbox::after{content:"";position:absolute;left:18px;top:100%;border:7px solid transparent;border-top-color:var(--ink)}
-.tipbox.show{display:block}
 .catlist{padding:4px 0 10px 18px}
 .catlist .sheetscroll{max-height:min(55vh,400px);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .cmp{width:100%;border-collapse:collapse;font-size:14px}.cmp th,.cmp td{padding:7px 4px;text-align:right;border-top:1px solid var(--line);white-space:nowrap}.cmp thead th{font-size:12px;font-weight:600;color:var(--muted);border-top:0}.cmp tbody th{text-align:left;font-weight:500;white-space:normal;word-break:keep-all}.cmp-d{font-size:13px;color:var(--muted)}.cmp-d.up{color:var(--good);font-weight:600}.cmp-d.down{color:var(--bad);font-weight:600}
@@ -410,3 +407,13 @@ i.lgdark{background:linear-gradient(90deg,var(--ink) 50%,color-mix(in srgb,var(-
 .chkbtns .btn{padding:7px 14px;font-size:13px}
 .chkfilter{align-self:flex-start;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid var(--mid);color:var(--mid);background:var(--surface)}
 .chkfilter.on{background:var(--mid);color:var(--surface)}
+/* tutorial: how to read the record tab */
+.guide{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;text-align:left}
+.guide>li{padding:12px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--line);word-break:keep-all}
+.guide>li>b{font-size:15px}
+.guide>li>p{margin:4px 0 0;font-size:14px;line-height:1.55;color:var(--muted)}
+.gcats{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.gcats li{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5}
+.gcats i{width:10px;height:10px;border-radius:3px;flex:none;margin-top:5px}
+.gcats b{display:block;font-size:14px}
+.gcats span{color:var(--muted)}
