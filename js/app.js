@@ -1406,7 +1406,7 @@ function viewBook(){
         el("button",{class:"btn",style:"padding:6px 12px;font-size:13px",onclick:()=>{S.trashSheet=true;render()}},"휴지통 열기")):null,
       BK.numbered?el("span",{class:"small muted"},"이미 있던 단어 "+BK.numbered+"개에 책 번호를 붙였어."):null,
       BK.filled?el("span",{class:"small muted"},"빈 칸이 있던 단어 "+BK.filled+"개의 빈 칸을 채웠어."):null,
-      rows.length?el("ul",{class:"booklist"},rows.slice(0,3).map(wordRow)):BK.last.added.length?el("span",{class:"small muted"},"단어장에 반영하는 중…"):null,
+      rows.length?el("ul",{class:"booklist"},rows.slice(0,3).map(c=>wordRow(c))):BK.last.added.length?el("span",{class:"small muted"},"단어장에 반영하는 중…"):null,
       rows.length>3?el("span",{class:"small muted"},"외 "+(rows.length-3)+"개는 아래 목록 첫 페이지에 있어."):null);
   }
   return el("main",{class:"wrap"},header(learner?"책 단어":"책 단어 추가하기"),fileIn,
