@@ -1,7 +1,9 @@
 /* 토플 단어장 사진 읽기 중계 서버 (Cloudflare Worker).
    앱이 보낸 프롬프트와 책 사진을 Gemini에 넘기고 JSON 답을 돌려준다. API 키는 여기(비밀 변수)에만 둔다.
    로그인한 사람(Firebase ID 토큰)만 쓸 수 있다.
-   변수: GEMINI_API_KEY (비밀) · FIREBASE_PROJECT_ID · ALLOWED_ORIGIN (예: https://thyomoon.github.io) · MODEL (선택) */
+   변수: GEMINI_API_KEY (비밀) · FIREBASE_PROJECT_ID · ALLOWED_ORIGIN (예: https://thyomoon.github.io) · MODEL (선택)
+   MODEL은 쉼표로 여러 개를 적을 수 있다. 앞의 모델이 붐비거나(503) 한도가 차면(429) 다음 모델로 넘어간다. 비우면 DEFAULT_MODELS. */
+const DEFAULT_MODELS="gemini-flash-latest,gemini-flash-lite-latest";
 const JWKS_URL="https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 let jwks=null,jwksAt=0;
 
@@ -27,13 +29,23 @@ async function handle(req,env){
     let body;try{body=await req.json()}catch{return fail("bad_request",400)}
     const parts=[{text:String(body.prompt||"").slice(0,40000)}];
     if(body.image&&body.image.data)parts.push({inline_data:{mime_type:body.image.mime||"image/jpeg",data:body.image.data}});
-    const model=env.MODEL||"gemini-flash-latest";
-    const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent",{method:"POST",
-      headers:{"content-type":"application/json","x-goog-api-key":env.GEMINI_API_KEY},
-      body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{responseMimeType:"application/json",temperature:0.2,maxOutputTokens:32768,mediaResolution:"MEDIA_RESOLUTION_HIGH"}})});
-    if(r.status===429)return fail("rate_limited",429);
-    if(!r.ok){const t=await r.text();let m=t;try{m=JSON.parse(t).error.message||t}catch{}
-      return fail(r.status===400&&/image/i.test(t)?"image_rejected":"upstream_error",502,"Gemini "+r.status+": "+String(m).slice(0,300))}
+    // models in order: when one is busy (500/503), out of free quota (429) or gone (404), try the next
+    const models=String(env.MODEL||DEFAULT_MODELS).split(",").map(s=>s.trim()).filter(Boolean);
+    const payload=JSON.stringify({contents:[{role:"user",parts}],generationConfig:{responseMimeType:"application/json",temperature:0.2,maxOutputTokens:32768,mediaResolution:"MEDIA_RESOLUTION_HIGH"}});
+    let r=null,last=null,allLimited=true;
+    for(const model of models){
+      r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent",{method:"POST",
+        headers:{"content-type":"application/json","x-goog-api-key":env.GEMINI_API_KEY},body:payload});
+      if(r.ok)break;
+      const t=await r.text();let m=t;try{m=JSON.parse(t).error.message||t}catch{}
+      last={status:r.status,t,text:"Gemini "+r.status+" ("+model+"): "+String(m).slice(0,300)};
+      if(r.status!==429)allLimited=false;
+      const retry=[404,429,500,503].includes(r.status);r=null;
+      if(!retry)break; // a bad request fails the same way on every model
+    }
+    if(!r){
+      if(allLimited)return fail("rate_limited",429);
+      return fail(last.status===400&&/image/i.test(last.t)?"image_rejected":"upstream_error",502,last.text)}
     const d=await r.json();
     const c=d.candidates&&d.candidates[0];
     if(!c)return fail(d.promptFeedback&&d.promptFeedback.blockReason?"refused":"empty_completion",502);

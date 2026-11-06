@@ -49,7 +49,7 @@ claude.ai 아티팩트였던 「이나의 토플 단어장」을 내 주소(GitH
    - `GEMINI_API_KEY` — 종류 **비밀(Secret)**, 값 = 2단계 키
    - `FIREBASE_PROJECT_ID` — 텍스트, 값 = `toefl-vocab-ce51c` (1단계 `projectId`와 같게)
    - `ALLOWED_ORIGIN` — 텍스트, 값 = `https://thyomoon.github.io`
-   - `MODEL` — (선택) 비우면 `gemini-flash-latest`. 품질이 아쉬우면 다른 모델 이름을 넣는다.
+   - `MODEL` — (선택) 비우면 `gemini-flash-latest,gemini-flash-lite-latest`. 쉼표로 여러 개를 적으면 앞의 모델이 붐비거나(503) 한도가 차면(429) 다음 모델로 넘어간다.
 4. Worker 주소(`https://toefl-vocab-ocr.….workers.dev`)를 `js/config.js`의 `workerUrl`에 붙여넣는다.
 
 ### 4. GitHub Pages
